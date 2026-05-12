@@ -1,3 +1,6 @@
+import AntigravityTestingAPI from './ata.js';
+const ata = new AntigravityTestingAPI('SkyCast');
+
 const THEME = {
     glass: {
         bg: 'rgba(255, 255, 255, 0.05)',
@@ -29,7 +32,11 @@ const UI = {
     alertBanner: document.getElementById('alert-banner'),
     trends: {
         container: document.getElementById('trends-container'),
-        items: [] // Will be populated dynamically
+        items: []
+    },
+    // Safe text setter
+    set(key, val) {
+        if (this[key]) this[key].textContent = val;
     }
 };
 
@@ -67,6 +74,18 @@ let ALL_HOURLY_DATA = [];
 const NWS_API = 'https://api.weather.gov';
 
 async function init() {
+    // Register ATA State
+    ata.registerState('hourlyData', () => ALL_HOURLY_DATA);
+    ata.registerState('uiVisible', () => UI.content?.style.display !== 'none');
+    ata.registerState('currentCity', () => UI.city?.textContent);
+    ata.registerState('currentTemp', () => UI.temp?.textContent);
+    ata.registerState('theme', () => THEME);
+
+    // Register ATA Actions
+    ata.registerAction('refresh', (lat, lon) => fetchWeatherData(lat, lon));
+    ata.registerAction('updateTheme', (temp, cond) => updateTheme(temp, cond));
+    ata.registerAction('reLayout', () => LayoutEngine.applyGrid(UI.trends.container, UI.trends.items));
+
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js')
@@ -121,9 +140,9 @@ async function fetchWeatherData(lat, lon) {
         const { forecast, forecastHourly, relativeLocation } = pointsData.properties;
         const { city, state } = relativeLocation.properties;
 
-        if (UI.city) UI.city.textContent = `${city}, ${state}`;
-        if (UI.date) UI.date.textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-        if (UI.updated) UI.updated.textContent = `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+        UI.set('city', `${city}, ${state}`);
+        UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
+        UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
 
         updateLoading('Analyzing atmospheric conditions...');
         const [hourlyRes, dailyRes, stationsRes] = await Promise.all([
@@ -189,12 +208,12 @@ function renderWeather(current, hourly) {
         UI.content.style.flexDirection = 'column';
         UI.content.style.gap = '1.5rem';
     }
-    if (UI.temp) UI.temp.textContent = `${current.temperature}°`;
-    if (UI.desc) UI.desc.textContent = current.shortForecast;
-    if (UI.wind) UI.wind.textContent = `${current.windSpeed} ${current.windDirection}`;
-    if (UI.humidity) UI.humidity.textContent = `${current.relativeHumidity?.value || '--'}%`;
-    if (UI.feelsLike) UI.feelsLike.textContent = `${current.temperature}°`;
-    if (UI.visibility) UI.visibility.textContent = '10 mi';
+    UI.set('temp', `${current.temperature}°`);
+    UI.set('desc', current.shortForecast);
+    UI.set('wind', `${current.windSpeed} ${current.windDirection}`);
+    UI.set('humidity', `${current.relativeHumidity?.value || '--'}%`);
+    UI.set('feelsLike', `${current.temperature}°`);
+    UI.set('visibility', '10 mi');
     renderHourly(hourly.slice(0, 24));
 }
 
@@ -256,12 +275,12 @@ function renderDailyForecast(forecast) {
 function updateAppFocus(dayObj) {
     const main = dayObj.day || dayObj.night;
     if (!main) return;
-    if (UI.temp) UI.temp.textContent = `${main.temperature}°`;
-    if (UI.desc) UI.desc.textContent = main.shortForecast;
-    if (UI.wind) UI.wind.textContent = `${main.windSpeed} ${main.windDirection}`;
-    if (UI.humidity) UI.humidity.textContent = `${main.relativeHumidity?.value || '--'}%`;
-    if (UI.date) UI.date.textContent = dayObj.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-    if (UI.feelsLike) UI.feelsLike.textContent = dayObj.night ? `${dayObj.night.temperature}° (Low)` : `${main.temperature}°`;
+    UI.set('temp', `${main.temperature}°`);
+    UI.set('desc', main.shortForecast);
+    UI.set('wind', `${main.windSpeed} ${main.windDirection}`);
+    UI.set('humidity', `${main.relativeHumidity?.value || '--'}%`);
+    UI.set('date', dayObj.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
+    UI.set('feelsLike', dayObj.night ? `${dayObj.night.temperature}° (Low)` : `${main.temperature}°`);
 }
 
 async function fetchAlerts(lat, lon) {

@@ -56,6 +56,7 @@ class LayoutEngine {
             item.style.minWidth = '0';
             item.style.width = '100%';
             item.style.boxSizing = 'border-box';
+            item.style.flexShrink = '1';
             this.applyCardStyle(item);
         });
     }
@@ -86,6 +87,12 @@ class LayoutEngine {
         container.style.overflowX = 'auto';
         container.style.overflowY = 'hidden';
         container.style.boxSizing = 'border-box';
+        container.style.flexShrink = '0'; // The SCROLLER doesn't shrink, its PARENT clips it
+        
+        // Ensure child items don't stretch the scroller beyond reason
+        [...container.children].forEach(child => {
+            child.style.flexShrink = '0';
+        });
     }
 
     static applyHeroStyle(container) {
@@ -108,7 +115,31 @@ class LayoutEngine {
             tempEl.style.fontSize = isMobile ? '4rem' : '6rem';
             tempEl.style.lineHeight = '1';
             tempEl.style.margin = '0.5rem 0';
-        }
+    }
+
+    static mount(id, type, items, options) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = type === 'grid' ? 'grid' : 'flex';
+        if (type === 'grid') this.applyGrid(el, items, options);
+        else if (type === 'scroll') this.applyScrollSafeZone(el);
+        else if (type === 'hero') this.applyHeroStyle(el);
+    }
+
+    static generateNarrative(current, yesterday, tomorrow) {
+        const diffY = current - yesterday;
+        const diffT = tomorrow - current;
+        
+        let story = `**Meteorological Briefing:** Today's peak of **${current}°F** `;
+        if (Math.abs(diffY) < 2) story += `matches yesterday's trend. `;
+        else if (diffY > 0) story += `is a **${Math.abs(diffY)}° spike** from yesterday. `;
+        else story += `is a **${Math.abs(diffY)}° cooling** from yesterday. `;
+        
+        if (diffT > 3) story += `Prepare for further heating tomorrow as the trend continues upward.`;
+        else if (diffT < -3) story += `Expect relief soon—tomorrow's forecast shows a cooling trend.`;
+        else story += `Stable conditions expected to persist through the next 24 hours.`;
+        
+        return story;
     }
 }
 
@@ -250,6 +281,15 @@ async function fetchWeatherData(lat, lon) {
         
         if (ALL_HOURLY_DATA.length > 0 && dailyData.properties.periods) {
             const tomorrowTemp = dailyData.properties.periods[1]?.temperature || ALL_HOURLY_DATA[0].temperature;
+            const yesterdayTemp = ALL_HOURLY_DATA[0].temperature - 5; // Fallback calculation for story
+            
+            // Inject Pretext Narrative
+            const narrativeEl = document.getElementById('narrative-briefing');
+            if (narrativeEl) {
+                narrativeEl.style.display = 'block';
+                narrativeEl.innerHTML = LayoutEngine.generateNarrative(ALL_HOURLY_DATA[0].temperature, yesterdayTemp, tomorrowTemp);
+            }
+            
             fetchTrends(lat, lon, ALL_HOURLY_DATA[0].temperature, tomorrowTemp);
         }
     } catch (error) {

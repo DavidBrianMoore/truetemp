@@ -68,6 +68,14 @@ class LayoutEngine {
         el.style.gap = '8px';
         el.style.transition = 'transform 0.3s ease';
     }
+
+    static applyScrollSafeZone(container) {
+        if (!container) return;
+        // Inject Pretext-style safe zone padding for highlights
+        container.style.paddingTop = '12px';
+        container.style.paddingBottom = '16px';
+        container.style.marginTop = '-12px'; // Offset to maintain vertical rhythm
+    }
 }
 
 let ALL_HOURLY_DATA = [];
@@ -285,6 +293,9 @@ function renderDailyForecast(forecast) {
         };
         UI.daily.appendChild(item);
     });
+
+    // Apply Pretext safe-zone logic to prevent clipping
+    LayoutEngine.applyScrollSafeZone(UI.daily);
 }
 
 function updateAppFocus(dayObj) {

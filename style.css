@@ -1,7 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
 
 :root {
-    --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    --bg-color-1: #0f172a;
+    --bg-color-2: #1e293b;
+    --bg-gradient: linear-gradient(135deg, var(--bg-color-1) 0%, var(--bg-color-2) 100%);
     --card-bg: rgba(255, 255, 255, 0.05);
     --card-border: rgba(255, 255, 255, 0.1);
     --glass-blur: blur(20px);
@@ -22,6 +24,7 @@
 body {
     font-family: 'Outfit', sans-serif;
     background: var(--bg-gradient);
+    background-attachment: fixed;
     color: var(--text-primary);
     min-height: 100vh;
     display: flex;
@@ -29,6 +32,7 @@ body {
     align-items: center;
     overflow-x: hidden;
     padding: 1rem;
+    transition: background 1.5s ease;
 }
 
 #app {
@@ -138,6 +142,35 @@ body {
     font-weight: 600;
 }
 
+/* Forecast Items (for both Hourly and Daily) */
+.forecast-item {
+    min-width: 90px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 1.5rem;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: var(--transition-fast);
+}
+
+.forecast-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-5px);
+}
+
+.forecast-item img {
+    width: 40px;
+    height: 40px;
+}
+
+.forecast-item .temp {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
 /* Info Grid */
 .info-grid {
     display: grid;
@@ -218,7 +251,81 @@ body {
 }
 
 .card, .info-item, .forecast-container {
-    animation: slideUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: slideUp 0.8s var(--transition-slow) forwards;
+}
+
+/* Alert Banner Styling */
+.alert-banner {
+    width: 100%;
+    max-width: 500px;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    backdrop-filter: blur(10px);
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: slideDown 0.5s ease-out;
+}
+
+/* Trends Grid Styling */
+.trends-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    animation: slideUp 0.8s var(--transition-slow) forwards;
+}
+
+.trend-item {
+    background: var(--card-bg);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--card-border);
+    border-radius: 1.5rem;
+    padding: 1rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    text-align: center;
+}
+
+.trend-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.trend-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.diff-badge.small {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-top: 4px;
+}
+
+.diff-badge.hotter { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+.diff-badge.cooler { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+
+.historical-note {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 .info-item:nth-child(2) { animation-delay: 0.1s; }

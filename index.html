@@ -19,6 +19,9 @@
     <div class="bg-blob"></div>
     
     <main id="app">
+        <!-- Smart Alert Banner (Hidden by default) -->
+        <div id="alert-banner" class="alert-banner" style="display: none;"></div>
+
         <!-- Initial State: Loading or Request Permission -->
         <div id="ui-state" class="loading">
             <div class="spinner"></div>
@@ -35,6 +38,25 @@
                 <div class="temperature" id="current-temp">--°</div>
                 <div class="condition" id="weather-desc">Cloudy</div>
             </header>
+
+            <!-- Trends Section -->
+            <section class="trends-container" id="trends-container" style="display: none;">
+                <div class="trend-item">
+                    <span class="trend-label">Yesterday</span>
+                    <span class="trend-value" id="trend-yesterday-temp">--°</span>
+                    <span id="trend-yesterday-diff" class="diff-badge small">--</span>
+                </div>
+                <div class="trend-item">
+                    <span class="trend-label">Last Year</span>
+                    <span class="trend-value" id="trend-lastyear-temp">--°</span>
+                    <span id="trend-lastyear-diff" class="diff-badge small">--</span>
+                </div>
+                <div class="trend-item">
+                    <span class="trend-label">Tomorrow</span>
+                    <span class="trend-value" id="trend-tomorrow-temp">--°</span>
+                    <span id="trend-tomorrow-diff" class="diff-badge small">--</span>
+                </div>
+            </section>
 
             <section class="info-grid">
                 <div class="info-item">
@@ -59,6 +81,13 @@
                 <h3 style="margin-bottom: 1rem; color: var(--text-secondary); font-weight: 600;">Hourly Forecast</h3>
                 <div class="forecast-scroll" id="hourly-forecast">
                     <!-- Hourly items will be injected here -->
+                </div>
+            </section>
+
+            <section class="forecast-container">
+                <h3 style="margin-bottom: 1rem; color: var(--text-secondary); font-weight: 600;">Daily Forecast</h3>
+                <div class="forecast-scroll" id="daily-forecast">
+                    <!-- Daily items will be injected here -->
                 </div>
             </section>
         </div>

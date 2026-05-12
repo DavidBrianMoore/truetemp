@@ -121,7 +121,6 @@ class LayoutEngine {
         container.style.padding = isMobile ? '1rem 0' : '2rem 1rem';
         container.style.gap = isMobile ? '0.2rem' : '0.5rem';
         container.style.width = '100%';
-        container.style.maxWidth = '500px';
         container.style.margin = '0 auto';
         container.style.overflowX = 'hidden';
         
@@ -309,8 +308,9 @@ function renderWeather(current, hourly) {
     if (!current) return;
     if (UI.state) UI.state.style.display = 'none';
     if (UI.content) {
-        LayoutEngine.applyHeroStyle(UI.content);
-        UI.content.style.display = ''; // Let CSS Grid/Flex take over
+        const hero = UI.content.querySelector('.current-weather');
+        if (hero) LayoutEngine.applyHeroStyle(hero);
+        UI.content.style.display = ''; // Restore CSS Grid
     }
     UI.set('temp', `${current.temperature}°`);
     UI.set('desc', current.shortForecast);

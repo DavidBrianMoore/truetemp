@@ -251,6 +251,11 @@ async function fetchWeatherData(lat, lon) {
             if (stationsRes.ok) {
                 const stationsData = await stationsRes.json();
                 const stationId = stationsData.features[0]?.properties?.stationIdentifier;
+                const cityEl = document.getElementById('city-name');
+                if (cityEl) cityEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> <span>${city}, ${state}</span><div style="font-size:0.6rem; opacity:0.6; font-family:monospace; margin-top:2px;">${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}</div>`;
+                const stationEl = document.getElementById('station-info');
+                if (stationEl) stationEl.textContent = `NWS Station: ${stationId}`;
+                
                 if (stationId) {
                     const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest`, {
                         headers: { 'User-Agent': 'TrueTempApp/1.0' },

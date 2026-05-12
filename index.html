@@ -35,10 +35,11 @@
         <!-- Weather Content (Hidden initially) -->
         <div id="weather-content" style="display: none;">
             <header class="current-weather card">
-                <div class="location-name" id="city-name">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                <div class="location-name" id="city-name" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 2px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                     <span>Detecting Location...</span>
                 </div>
+                <div id="station-info" style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 8px; font-family: monospace; letter-spacing: 0.5px;">--</div>
                 <div class="current-date" id="current-date">--</div>
                 <div class="last-updated" id="last-updated">Updating...</div>
                 <div class="temperature" id="current-temp">--°</div>

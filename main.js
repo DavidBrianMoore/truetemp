@@ -13,11 +13,13 @@ const UI = {
     alertBanner: document.getElementById('alert-banner'),
     trends: {
         container: document.getElementById('trends-container'),
-        yesterday: { temp: document.getElementById('trend-yesterday-temp'), diff: document.getElementById('trend-yesterday-diff') },
-        lastYear: { temp: document.getElementById('trend-lastyear-temp'), diff: document.getElementById('trend-lastyear-diff') },
-        tomorrow: { temp: document.getElementById('trend-tomorrow-temp'), diff: document.getElementById('trend-tomorrow-diff') }
+        yesterday: { el: document.querySelector('.trend-item:nth-child(1)'), temp: document.getElementById('trend-yesterday-temp'), diff: document.getElementById('trend-yesterday-diff') },
+        lastYear: { el: document.querySelector('.trend-item:nth-child(2)'), temp: document.getElementById('trend-lastyear-temp'), diff: document.getElementById('trend-lastyear-diff') },
+        tomorrow: { el: document.querySelector('.trend-item:nth-child(3)'), temp: document.getElementById('trend-tomorrow-temp'), diff: document.getElementById('trend-tomorrow-diff') }
     }
 };
+
+let ALL_HOURLY_DATA = [];
 
 const NWS_API = 'https://api.weather.gov';
 
@@ -85,7 +87,9 @@ async function fetchWeatherData(lat, lon) {
     const hourlyData = await hourlyRes.json();
     const dailyData = await dailyRes.json();
 
-    renderWeather(hourlyData.properties.periods[0], hourlyData.properties.periods);
+    ALL_HOURLY_DATA = hourlyData.properties.periods;
+
+    renderWeather(ALL_HOURLY_DATA[0], ALL_HOURLY_DATA);
     renderDailyForecast(dailyData.properties.periods);
 
     // Update Theme based on current weather
@@ -111,12 +115,15 @@ function renderWeather(current, hourly) {
     UI.humidity.textContent = `${current.relativeHumidity?.value || '--'}%`;
     
     // Visibility isn't always in NWS forecast periods, fallback to feels like if missing
-    UI.feelsLike.textContent = `${current.temperature}°`; // NWS doesn't always provide apparent temp in forecast
-    UI.visibility.textContent = '10 mi'; // Defaulting for visual completeness
+    UI.feelsLike.textContent = `${current.temperature}°`;
+    UI.visibility.textContent = '10 mi';
 
-    // Hourly
+    renderHourly(hourly.slice(0, 24));
+}
+
+function renderHourly(periods) {
     UI.hourly.innerHTML = '';
-    hourly.slice(0, 24).forEach(period => {
+    periods.forEach(period => {
         const time = new Date(period.startTime).toLocaleTimeString([], { hour: 'numeric' });
         const item = document.createElement('div');
         item.className = 'forecast-item';
@@ -131,14 +138,35 @@ function renderWeather(current, hourly) {
 
 function renderDailyForecast(forecast) {
     UI.daily.innerHTML = '';
-    forecast.forEach(period => {
+    forecast.forEach((period, index) => {
         const item = document.createElement('div');
-        item.className = 'forecast-item';
+        item.className = 'forecast-item clickable';
+        if (index === 0) item.classList.add('selected');
+        
         item.innerHTML = `
             <span>${period.name}</span>
             <img src="${period.icon}" alt="${period.shortForecast}">
             <span class="temp">${period.temperature}°</span>
         `;
+        
+        item.onclick = () => {
+            // Remove selected from others
+            document.querySelectorAll('.forecast-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+
+            // Filter hourly data for this specific day
+            const targetDate = new Date(period.startTime).toDateString();
+            const filteredHourly = ALL_HOURLY_DATA.filter(h => 
+                new Date(h.startTime).toDateString() === targetDate
+            );
+            
+            if (filteredHourly.length > 0) {
+                renderHourly(filteredHourly);
+                // Scroll hourly back to start
+                UI.hourly.scrollTo({ left: 0, behavior: 'smooth' });
+            }
+        };
+        
         UI.daily.appendChild(item);
     });
 }

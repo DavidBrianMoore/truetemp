@@ -282,6 +282,22 @@ body {
     animation: slideUp 0.8s var(--transition-slow) forwards;
 }
 
+.forecast-item.selected {
+    background: rgba(56, 189, 248, 0.2);
+    border-color: var(--accent);
+    transform: translateY(-5px);
+}
+
+.clickable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.clickable:active {
+    transform: scale(0.95) translateY(0);
+    background: rgba(255, 255, 255, 0.1);
+}
+
 .trend-item {
     background: var(--card-bg);
     backdrop-filter: var(--glass-blur);
@@ -293,6 +309,17 @@ body {
     align-items: center;
     gap: 0.25rem;
     text-align: center;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.trend-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-3px);
+}
+
+.trend-item:active {
+    transform: scale(0.95);
 }
 
 .trend-label {

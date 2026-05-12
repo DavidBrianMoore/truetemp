@@ -2,6 +2,7 @@ const UI = {
     state: document.getElementById('ui-state'),
     content: document.getElementById('weather-content'),
     city: document.querySelector('#city-name span'),
+    date: document.getElementById('current-date'),
     temp: document.getElementById('current-temp'),
     desc: document.getElementById('weather-desc'),
     feelsLike: document.getElementById('feels-like'),

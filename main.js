@@ -286,14 +286,14 @@ async function fetchWeatherData(lat, lon) {
             UI.set('high', `${high}°`);
             UI.set('low', `${low}°`);
             renderDailyForecast(periods);
+
+            // Fetch trends comparing today's HIGH to others
+            const tomorrowTemp = periods[1].temperature; // Next day period
+            fetchTrends(lat, lon, high, tomorrowTemp);
         }
 
         fetchAlerts(lat, lon);
         
-        if (ALL_HOURLY_DATA.length > 0 && dailyData.properties.periods) {
-            const tomorrowTemp = dailyData.properties.periods[1]?.temperature || ALL_HOURLY_DATA[0].temperature;
-            fetchTrends(lat, lon, ALL_HOURLY_DATA[0].temperature, tomorrowTemp);
-        }
     } catch (error) {
         showError(error.message);
     }
@@ -453,7 +453,7 @@ function updateTheme(temp, condition) {
     THEME.accent = accent;
 }
 
-async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
+async function fetchTrends(lat, lon, todayHigh, tomorrowHigh) {
     if (!UI.trends.container) return;
     const cacheBust = Date.now();
     try {
@@ -463,16 +463,16 @@ async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
 
         const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${ly.toISOString().split('T')[0]}&end_date=${yest.toISOString().split('T')[0]}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`);
         const data = await res.json();
-        const yestT = Math.round(data.daily.temperature_2m_max[data.daily.temperature_2m_max.length - 1]);
-        const lyT = Math.round(data.daily.temperature_2m_max[0]);
+        const yestHigh = Math.round(data.daily.temperature_2m_max[data.daily.temperature_2m_max.length - 1]);
+        const lyHigh = Math.round(data.daily.temperature_2m_max[0]);
 
         UI.trends.container.innerHTML = '';
         UI.trends.items = [];
 
         const trendData = [
-            { label: `Yesterday (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: yestT, diff: currentTemp - yestT },
-            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: lyT, diff: currentTemp - lyT },
-            { label: 'Tomorrow', temp: tomorrowTemp, diff: tomorrowTemp - currentTemp, isForward: true }
+            { label: `Yesterday (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: yestHigh, diff: yestHigh - todayHigh, isReverse: true },
+            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: lyHigh, diff: lyHigh - todayHigh, isReverse: true },
+            { label: 'Tomorrow', temp: tomorrowHigh, diff: tomorrowHigh - todayHigh, isForward: true }
         ];
 
         trendData.forEach(d => {
@@ -485,7 +485,11 @@ async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
             LayoutEngine.applyCardStyle(el);
             
             const diff = d.diff;
-            const text = diff > 0 ? `+${diff}° hotter` : diff < 0 ? `${Math.abs(diff)}° cooler` : 'Same';
+            let text = '';
+            if (diff > 0) text = `${diff}° hotter`;
+            else if (diff < 0) text = `${Math.abs(diff)}° cooler`;
+            else text = 'Same';
+
             const badgeCls = diff > 0 ? 'hotter' : diff < 0 ? 'cooler' : '';
             
             el.innerHTML = `

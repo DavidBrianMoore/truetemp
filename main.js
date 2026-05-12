@@ -35,6 +35,8 @@ const UI = {
         container: document.getElementById('trends-container'),
         items: []
     },
+    high: document.getElementById('today-high'),
+    low: document.getElementById('today-low'),
     // Safe text setter
     set(key, val) {
         if (this[key]) this[key].textContent = val;
@@ -43,6 +45,7 @@ const UI = {
 
 class LayoutEngine {
     static applyGrid(container, items, options = { columns: 3 }) {
+        if (!container) return;
         const cols = options.columns;
         container.style.display = 'grid';
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
@@ -50,7 +53,6 @@ class LayoutEngine {
         container.style.width = '100%';
         container.style.maxWidth = '100%';
         container.style.boxSizing = 'border-box';
-        container.style.overflow = 'hidden';
         
         items.forEach(item => {
             item.style.minWidth = '0';
@@ -275,6 +277,10 @@ async function fetchWeatherData(lat, lon) {
         }
         
         if (dailyData.properties.periods) {
+            const today = dailyData.properties.periods[0];
+            const tonight = dailyData.properties.periods[1];
+            UI.set('high', `${today.temperature}°`);
+            UI.set('low', `${tonight.temperature}°`);
             renderDailyForecast(dailyData.properties.periods);
         }
 
@@ -333,12 +339,18 @@ function renderHourly(periods) {
     periods.forEach(period => {
         const item = document.createElement('div');
         item.className = 'forecast-item';
+        item.style.flex = '0 0 80px';
+        item.style.textAlign = 'center';
+        item.style.display = 'flex';
+        item.style.flexDirection = 'column';
+        item.style.alignItems = 'center';
         LayoutEngine.applyCardStyle(item);
+        
         const time = new Date(period.startTime).toLocaleTimeString([], { hour: 'numeric' });
         item.innerHTML = `
-            <span class="hourly-time">${time}</span>
-            <img src="${period.icon}" alt="icon" style="width:32px;">
-            <span class="temp">${period.temperature}°</span>
+            <span style="font-size: 0.8rem; font-weight: 600; opacity: 0.8;">${time}</span>
+            <img src="${period.icon}" alt="icon" style="width:32px; margin: 8px 0;">
+            <span class="temp" style="font-weight: 700;">${period.temperature}°</span>
         `;
         UI.hourly.appendChild(item);
     });
@@ -361,17 +373,23 @@ function renderDailyForecast(forecast) {
         else dayObj.night = period;
     }
 
-    grouped.forEach((day, index) => {
+    grouped.slice(0, 10).forEach((day, index) => {
         const item = document.createElement('div');
         item.className = 'forecast-item clickable';
+        item.style.flex = '0 0 100px';
+        item.style.textAlign = 'center';
+        item.style.display = 'flex';
+        item.style.flexDirection = 'column';
+        item.style.alignItems = 'center';
+        
         if (index === 0) item.classList.add('selected');
         const mainP = day.day || day.night;
         item.innerHTML = `
-            <span style="font-weight: 700;">${day.name}</span>
+            <span style="font-weight: 700; font-size: 0.9rem;">${day.name}</span>
             <span style="font-size: 0.7rem; opacity: 0.6;">${day.date.toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-            <img src="${mainP.icon}" alt="icon" style="width:32px;">
-            <div style="display:flex; gap: 4px; align-items: baseline;">
-                <span class="temp">${mainP.temperature}°</span>
+            <img src="${mainP.icon}" alt="icon" style="width:32px; margin: 8px 0;">
+            <div style="display:flex; gap: 4px; align-items: baseline; justify-content: center;">
+                <span class="temp" style="font-weight: 700;">${mainP.temperature}°</span>
                 ${day.night ? `<span style="font-size: 0.75rem; opacity: 0.4;">${day.night.temperature}°</span>` : ''}
             </div>
         `;
@@ -380,6 +398,7 @@ function renderDailyForecast(forecast) {
             item.classList.add('selected');
             updateAppFocus(day);
         };
+        LayoutEngine.applyCardStyle(item);
         UI.daily.appendChild(item);
     });
 

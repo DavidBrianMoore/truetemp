@@ -27,11 +27,13 @@ body {
     background-attachment: fixed;
     color: var(--text-primary);
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
     overflow-x: hidden;
-    padding: 1rem;
+    width: 100vw;
+    padding: 1rem 0.5rem;
     transition: background 1.5s ease;
 }
 
@@ -74,6 +76,11 @@ body {
 }
 
 /* Loading State */
+#app {
+    width: 100%;
+    max-width: 500px;
+    overflow-x: hidden;
+}
 .loading {
     display: flex;
     flex-direction: column;

@@ -81,6 +81,11 @@ class LayoutEngine {
         container.style.paddingTop = '12px';
         container.style.paddingBottom = '16px';
         container.style.marginTop = '-12px';
+        container.style.width = '100%';
+        container.style.maxWidth = '100%';
+        container.style.overflowX = 'auto';
+        container.style.overflowY = 'hidden';
+        container.style.boxSizing = 'border-box';
     }
 
     static applyHeroStyle(container) {

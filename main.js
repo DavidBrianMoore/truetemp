@@ -43,16 +43,18 @@ const UI = {
 
 class LayoutEngine {
     static applyGrid(container, items, options = { columns: 3 }) {
-        const width = container.offsetWidth;
-        // Logic: Keep 3 columns for trends unless extremely narrow (<320px)
-        const cols = width < 320 ? 1 : options.columns;
-        
+        const cols = options.columns;
         container.style.display = 'grid';
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
         container.style.gap = `${THEME.spacing.gap}px`;
         container.style.width = '100%';
+        container.style.boxSizing = 'border-box';
         
-        items.forEach(item => this.applyCardStyle(item));
+        items.forEach(item => {
+            item.style.minWidth = '0';
+            item.style.width = '100%';
+            this.applyCardStyle(item);
+        });
     }
 
     static applyCardStyle(el) {
@@ -80,20 +82,22 @@ class LayoutEngine {
 
     static applyHeroStyle(container) {
         if (!container) return;
-        const isMobile = window.innerWidth < 480;
+        const width = window.innerWidth;
+        const isMobile = width < 480;
         container.style.display = 'flex';
         container.style.flexDirection = 'column';
         container.style.alignItems = 'center';
         container.style.textAlign = 'center';
-        container.style.padding = isMobile ? '1rem 0.5rem' : '2rem 1rem';
-        container.style.gap = '0.25rem';
-        container.style.animation = 'slideDown 0.8s ease-out';
+        container.style.padding = isMobile ? '1rem 0' : '2rem 1rem';
+        container.style.gap = isMobile ? '0.2rem' : '0.5rem';
+        container.style.width = '100%';
         
-        // Scale the temperature text
         const tempEl = container.querySelector('.temperature');
         if (tempEl) {
+            // Precise font scaling: 4rem for mobile, 6rem for desktop
             tempEl.style.fontSize = isMobile ? '4rem' : '6rem';
-            tempEl.style.margin = '0.25rem 0';
+            tempEl.style.lineHeight = '1';
+            tempEl.style.margin = '0.5rem 0';
         }
     }
 }

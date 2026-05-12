@@ -145,21 +145,6 @@ class LayoutEngine {
 
 let ALL_HOURLY_DATA = [];
 let INITIAL_STATE = null;
-
-function updateAppFocus(data, isHistorical = false) {
-    if (!data) return;
-    
-    // Update Hero
-    UI.set('temp', `${data.temperature}°`);
-    UI.set('desc', data.shortForecast || (isHistorical ? 'Historical Record' : 'Forecast'));
-    
-    // Show "Return to Today" button
-    const resetBtn = document.getElementById('return-today');
-    if (resetBtn) {
-        resetBtn.style.display = 'flex';
-        resetBtn.style.opacity = '1';
-    }
-}
 const NWS_API = 'https://api.weather.gov';
 
 async function init() {
@@ -423,15 +408,25 @@ function renderDailyForecast(forecast) {
     UI.daily.style.flexWrap = 'nowrap';
 }
 
-function updateAppFocus(dayObj) {
-    const main = dayObj.day || dayObj.night;
-    if (!main) return;
+function updateAppFocus(data, isHistorical = false) {
+    if (!data) return;
+    
+    // Check if it's a daily group object or a flat period object
+    const main = data.day || data.night || data;
+    const dateStr = data.date ? data.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) : 'Temporal Pivot';
+    
     UI.set('temp', `${main.temperature}°`);
-    UI.set('desc', main.shortForecast);
-    UI.set('wind', `${main.windSpeed} ${main.windDirection}`);
-    UI.set('humidity', `${main.relativeHumidity?.value || '--'}%`);
-    UI.set('date', dayObj.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
-    UI.set('feelsLike', dayObj.night ? `${dayObj.night.temperature}° (Low)` : `${main.temperature}°`);
+    UI.set('desc', main.shortForecast || (isHistorical ? 'Historical Record' : 'Forecast'));
+    if (main.windSpeed) UI.set('wind', `${main.windSpeed} ${main.windDirection}`);
+    if (main.relativeHumidity) UI.set('humidity', `${main.relativeHumidity?.value || '--'}%`);
+    UI.set('date', dateStr);
+    
+    // Show "Return to Today" button if not returning to initial state
+    const resetBtn = document.getElementById('return-today');
+    if (resetBtn) {
+        const isInitial = INITIAL_STATE && main.temperature === INITIAL_STATE.temperature && main.shortForecast === INITIAL_STATE.shortForecast;
+        resetBtn.style.display = isInitial ? 'none' : 'flex';
+    }
 }
 
 async function fetchAlerts(lat, lon) {

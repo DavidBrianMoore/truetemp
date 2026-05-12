@@ -115,6 +115,7 @@ class LayoutEngine {
             tempEl.style.fontSize = isMobile ? '4rem' : '6rem';
             tempEl.style.lineHeight = '1';
             tempEl.style.margin = '0.5rem 0';
+        }
     }
 
     static mount(id, type, items, options) {

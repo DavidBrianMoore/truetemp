@@ -3,6 +3,7 @@ const UI = {
     content: document.getElementById('weather-content'),
     city: document.querySelector('#city-name span'),
     date: document.getElementById('current-date'),
+    updated: document.getElementById('last-updated'),
     temp: document.getElementById('current-temp'),
     desc: document.getElementById('weather-desc'),
     feelsLike: document.getElementById('feels-like'),
@@ -67,8 +68,9 @@ function getPosition() {
 async function fetchWeatherData(lat, lon) {
     try {
         updateLoading('Fetching local grid data...');
+        const t = Date.now();
         
-        const pointsRes = await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`, {
+        const pointsRes = await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}?t=${t}`, {
             headers: { 'User-Agent': 'TrueTempApp/1.0' }
         });
         
@@ -80,23 +82,51 @@ async function fetchWeatherData(lat, lon) {
 
         if (UI.city) UI.city.textContent = `${city}, ${state}`;
         if (UI.date) UI.date.textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+        if (UI.updated) UI.updated.textContent = `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 
         updateLoading('Analyzing atmospheric conditions...');
-        const [hourlyRes, dailyRes] = await Promise.all([
-            fetch(forecastHourly, { headers: { 'User-Agent': 'TrueTempApp/1.0' } }),
-            fetch(forecast, { headers: { 'User-Agent': 'TrueTempApp/1.0' } })
+        const [hourlyRes, dailyRes, stationsRes] = await Promise.all([
+            fetch(`${forecastHourly}?t=${t}`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } }),
+            fetch(`${forecast}?t=${t}`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } }),
+            fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } })
         ]);
 
         if (!hourlyRes.ok || !dailyRes.ok) throw new Error('Forecast unavailable.');
 
         const hourlyData = await hourlyRes.json();
         const dailyData = await dailyRes.json();
+        
+        let currentTemp = hourlyData.properties.periods[0].temperature;
+        
+        // Attempt to get Real-Time Observation
+        try {
+            if (stationsRes.ok) {
+                const stationsData = await stationsRes.json();
+                const stationId = stationsData.features[0]?.properties?.stationIdentifier;
+                if (stationId) {
+                    const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest?t=${t}`, {
+                        headers: { 'User-Agent': 'TrueTempApp/1.0' }
+                    });
+                    if (obsRes.ok) {
+                        const obsData = await obsRes.json();
+                        const celsius = obsData.properties.temperature.value;
+                        if (celsius !== null) {
+                            currentTemp = Math.round((celsius * 9/5) + 32);
+                            console.log(`Live Observation from ${stationId}: ${currentTemp}°F`);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Real-time observation failed, falling back to forecast.', e);
+        }
 
         ALL_HOURLY_DATA = hourlyData.properties.periods || [];
 
         if (ALL_HOURLY_DATA.length > 0) {
-            renderWeather(ALL_HOURLY_DATA[0], ALL_HOURLY_DATA);
-            updateTheme(ALL_HOURLY_DATA[0].temperature, ALL_HOURLY_DATA[0].shortForecast);
+            const currentPeriod = { ...ALL_HOURLY_DATA[0], temperature: currentTemp };
+            renderWeather(currentPeriod, ALL_HOURLY_DATA);
+            updateTheme(currentTemp, currentPeriod.shortForecast);
         }
         
         if (dailyData.properties.periods) {

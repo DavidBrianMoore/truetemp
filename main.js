@@ -130,8 +130,11 @@ async function fetchWeatherData(lat, lon) {
         updateLoading('Fetching local grid data...');
         const t = Date.now();
         
-        const pointsRes = await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}?t=${t}`, {
-            headers: { 'User-Agent': 'TrueTempApp/1.0' }
+        const pointsRes = await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`, {
+            headers: { 
+                'User-Agent': 'TrueTempApp/1.0',
+                'Cache-Control': 'no-cache'
+            }
         });
         
         if (!pointsRes.ok) throw new Error('Weather Service unavailable.');
@@ -146,9 +149,9 @@ async function fetchWeatherData(lat, lon) {
 
         updateLoading('Analyzing atmospheric conditions...');
         const [hourlyRes, dailyRes, stationsRes] = await Promise.all([
-            fetch(`${forecastHourly}?t=${t}`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } }),
-            fetch(`${forecast}?t=${t}`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } }),
-            fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } })
+            fetch(forecastHourly, { headers: { 'User-Agent': 'TrueTempApp/1.0', 'Cache-Control': 'no-cache' } }),
+            fetch(forecast, { headers: { 'User-Agent': 'TrueTempApp/1.0', 'Cache-Control': 'no-cache' } }),
+            fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: { 'User-Agent': 'TrueTempApp/1.0', 'Cache-Control': 'no-cache' } })
         ]);
 
         if (!hourlyRes.ok || !dailyRes.ok) throw new Error('Forecast unavailable.');
@@ -163,8 +166,11 @@ async function fetchWeatherData(lat, lon) {
                 const stationsData = await stationsRes.json();
                 const stationId = stationsData.features[0]?.properties?.stationIdentifier;
                 if (stationId) {
-                    const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest?t=${t}`, {
-                        headers: { 'User-Agent': 'TrueTempApp/1.0' }
+                    const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest`, {
+                        headers: { 
+                            'User-Agent': 'TrueTempApp/1.0',
+                            'Cache-Control': 'no-cache'
+                        }
                     });
                     if (obsRes.ok) {
                         const obsData = await obsRes.json();

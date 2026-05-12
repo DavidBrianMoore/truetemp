@@ -276,21 +276,16 @@ async function fetchWeatherData(lat, lon) {
         }
         
         if (dailyData.properties.periods) {
-            const p0 = dailyData.properties.periods[0];
-            const p1 = dailyData.properties.periods[1];
-            
-            let high, low;
-            if (p0.isDaytime) {
-                high = p0.temperature;
-                low = p1.temperature;
-            } else {
-                low = p0.temperature;
-                high = p1.temperature;
-            }
+            const periods = dailyData.properties.periods;
+            // Scan first 3 periods to find the true High and Low for the current 24h window
+            const relevant = periods.slice(0, 3);
+            const temps = relevant.map(p => p.temperature);
+            const high = Math.max(...temps);
+            const low = Math.min(...temps);
             
             UI.set('high', `${high}°`);
             UI.set('low', `${low}°`);
-            renderDailyForecast(dailyData.properties.periods);
+            renderDailyForecast(periods);
         }
 
         fetchAlerts(lat, lon);
@@ -460,12 +455,13 @@ function updateTheme(temp, condition) {
 
 async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
     if (!UI.trends.container) return;
+    const cacheBust = Date.now();
     try {
         const now = new Date();
         const yest = new Date(now); yest.setDate(now.getDate() - 1);
         const ly = new Date(now); ly.setFullYear(now.getFullYear() - 1);
 
-        const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${ly.toISOString().split('T')[0]}&end_date=${yest.toISOString().split('T')[0]}&daily=temperature_2m_max&temperature_unit=fahrenheit`);
+        const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${ly.toISOString().split('T')[0]}&end_date=${yest.toISOString().split('T')[0]}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`);
         const data = await res.json();
         const yestT = Math.round(data.daily.temperature_2m_max[data.daily.temperature_2m_max.length - 1]);
         const lyT = Math.round(data.daily.temperature_2m_max[0]);

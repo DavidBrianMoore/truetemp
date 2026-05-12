@@ -46,13 +46,16 @@ class LayoutEngine {
         const cols = options.columns;
         container.style.display = 'grid';
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-        container.style.gap = `${THEME.spacing.gap}px`;
+        container.style.gap = '8px';
         container.style.width = '100%';
+        container.style.maxWidth = '100%';
         container.style.boxSizing = 'border-box';
+        container.style.overflow = 'hidden';
         
         items.forEach(item => {
             item.style.minWidth = '0';
             item.style.width = '100%';
+            item.style.boxSizing = 'border-box';
             this.applyCardStyle(item);
         });
     }
@@ -83,7 +86,7 @@ class LayoutEngine {
     static applyHeroStyle(container) {
         if (!container) return;
         const width = window.innerWidth;
-        const isMobile = width < 480;
+        const isMobile = width < 640;
         container.style.display = 'flex';
         container.style.flexDirection = 'column';
         container.style.alignItems = 'center';
@@ -91,6 +94,8 @@ class LayoutEngine {
         container.style.padding = isMobile ? '1rem 0' : '2rem 1rem';
         container.style.gap = isMobile ? '0.2rem' : '0.5rem';
         container.style.width = '100%';
+        container.style.maxWidth = '100%';
+        container.style.overflow = 'hidden';
         
         const tempEl = container.querySelector('.temperature');
         if (tempEl) {

@@ -310,7 +310,7 @@ function renderWeather(current, hourly) {
     if (UI.state) UI.state.style.display = 'none';
     if (UI.content) {
         LayoutEngine.applyHeroStyle(UI.content);
-        UI.content.style.display = 'flex';
+        UI.content.style.display = ''; // Let CSS Grid/Flex take over
     }
     UI.set('temp', `${current.temperature}°`);
     UI.set('desc', current.shortForecast);

@@ -91,11 +91,14 @@ class LayoutEngine {
         container.style.boxSizing = 'border-box';
         container.style.flexShrink = '1'; 
         container.style.justifyContent = 'flex-start';
+        container.style.contain = 'layout';
+        container.style.minWidth = '0';
         
         // Ensure child items don't stretch the scroller beyond reason
         [...container.children].forEach(child => {
             child.style.flexShrink = '0';
             child.style.width = '100px';
+            child.style.minWidth = '100px';
             child.style.flexBasis = 'auto';
         });
     }

@@ -31,6 +31,7 @@ html, body {
     padding: 0;
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
+    min-width: 0;
 }
 
 body {
@@ -74,12 +75,15 @@ body {
     scroll-snap-type: x mandatory;
     width: 100%;
     justify-content: flex-start;
+    flex-shrink: 1;
+    contain: layout;
 }
 
 .forecast-item {
     scroll-snap-align: start;
     flex-shrink: 0;
     width: 100px;
+    min-width: 100px;
 }
 
 .forecast-scroll::-webkit-scrollbar {

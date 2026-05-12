@@ -144,6 +144,22 @@ class LayoutEngine {
 }
 
 let ALL_HOURLY_DATA = [];
+let INITIAL_STATE = null;
+
+function updateAppFocus(data, isHistorical = false) {
+    if (!data) return;
+    
+    // Update Hero
+    UI.set('temp', `${data.temperature}°`);
+    UI.set('desc', data.shortForecast || (isHistorical ? 'Historical Record' : 'Forecast'));
+    
+    // Show "Return to Today" button
+    const resetBtn = document.getElementById('return-today');
+    if (resetBtn) {
+        resetBtn.style.display = 'flex';
+        resetBtn.style.opacity = '1';
+    }
+}
 const NWS_API = 'https://api.weather.gov';
 
 async function init() {
@@ -269,6 +285,7 @@ async function fetchWeatherData(lat, lon) {
 
         if (ALL_HOURLY_DATA.length > 0) {
             const currentPeriod = { ...ALL_HOURLY_DATA[0], temperature: currentTemp };
+            INITIAL_STATE = currentPeriod;
             renderWeather(currentPeriod, ALL_HOURLY_DATA);
             updateTheme(currentTemp, currentPeriod.shortForecast);
         }
@@ -469,22 +486,46 @@ async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
 
         trendData.forEach(d => {
             const el = document.createElement('div');
+            el.className = 'trend-card clickable';
+            el.style.display = 'flex';
+            el.style.flexDirection = 'column';
+            el.style.alignItems = 'center';
+            el.style.cursor = 'pointer';
+            LayoutEngine.applyCardStyle(el);
+            
             const diff = d.diff;
             const text = diff > 0 ? `+${diff}° hotter` : diff < 0 ? `${Math.abs(diff)}° cooler` : 'Same';
             const badgeCls = diff > 0 ? 'hotter' : diff < 0 ? 'cooler' : '';
             
             el.innerHTML = `
-                <span style="font-size:0.7rem; color:var(--text-secondary); text-align:center;">${d.label}</span>
-                <span style="font-size:1.5rem; font-weight:700;">${d.temp}°</span>
+                <span style="font-size:0.7rem; color:var(--text-secondary); text-align:center; min-height: 2em;">${d.label}</span>
+                <span style="font-size:1.5rem; font-weight:700; margin: 4px 0;">${d.temp}°</span>
                 <span class="diff-badge small ${badgeCls}" style="font-size:0.6rem; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,0.1);">${text}</span>
             `;
+            
+            el.onclick = () => {
+                updateAppFocus({ 
+                    temperature: d.temp, 
+                    shortForecast: d.label.split(' ')[0] + ' Peak'
+                }, !d.isForward);
+            };
+
             UI.trends.container.appendChild(el);
             UI.trends.items.push(el);
         });
 
         LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);
         UI.trends.container.style.display = 'grid';
-    } catch (e) {}
+
+        // Setup Reset Button
+        const resetBtn = document.getElementById('return-today');
+        if (resetBtn) {
+            resetBtn.onclick = () => {
+                updateAppFocus(INITIAL_STATE);
+                resetBtn.style.display = 'none';
+            };
+        }
+    } catch (e) { console.error(e); }
 }
 
 function updateLoading(msg) { if (UI.state) UI.state.innerHTML = `<div class="spinner"></div><p>${msg}</p>`; }

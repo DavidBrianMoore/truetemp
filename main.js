@@ -89,11 +89,14 @@ class LayoutEngine {
         container.style.overflowX = 'auto';
         container.style.overflowY = 'hidden';
         container.style.boxSizing = 'border-box';
-        container.style.flexShrink = '0'; // The SCROLLER doesn't shrink, its PARENT clips it
+        container.style.flexShrink = '1'; 
+        container.style.justifyContent = 'flex-start';
         
         // Ensure child items don't stretch the scroller beyond reason
         [...container.children].forEach(child => {
             child.style.flexShrink = '0';
+            child.style.width = '100px';
+            child.style.flexBasis = 'auto';
         });
     }
 

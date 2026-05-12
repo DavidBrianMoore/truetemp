@@ -1,3 +1,17 @@
+const THEME = {
+    glass: {
+        bg: 'rgba(255, 255, 255, 0.05)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        blur: 'blur(20px)',
+        shadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+    },
+    spacing: {
+        gap: 12,
+        padding: 16,
+        radius: 24
+    }
+};
+
 const UI = {
     state: document.getElementById('ui-state'),
     content: document.getElementById('weather-content'),
@@ -15,17 +29,44 @@ const UI = {
     alertBanner: document.getElementById('alert-banner'),
     trends: {
         container: document.getElementById('trends-container'),
-        yesterday: { el: document.querySelector('.trend-item:nth-child(1)'), temp: document.getElementById('trend-yesterday-temp'), diff: document.getElementById('trend-yesterday-diff') },
-        lastYear: { el: document.querySelector('.trend-item:nth-child(2)'), temp: document.getElementById('trend-lastyear-temp'), diff: document.getElementById('trend-lastyear-diff') },
-        tomorrow: { el: document.querySelector('.trend-item:nth-child(3)'), temp: document.getElementById('trend-tomorrow-temp'), diff: document.getElementById('trend-tomorrow-diff') }
+        items: [] // Will be populated dynamically
     }
 };
+
+class LayoutEngine {
+    static applyGrid(container, items, options = { columns: 3 }) {
+        const width = container.offsetWidth;
+        const cols = width < 400 ? 1 : options.columns;
+        
+        container.style.display = 'grid';
+        container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        container.style.gap = `${THEME.spacing.gap}px`;
+        container.style.width = '100%';
+        
+        items.forEach(item => this.applyCardStyle(item));
+    }
+
+    static applyCardStyle(el) {
+        if (!el) return;
+        el.style.background = THEME.glass.bg;
+        el.style.backdropFilter = THEME.glass.blur;
+        el.style.webkitBackdropFilter = THEME.glass.blur;
+        el.style.border = THEME.glass.border;
+        el.style.borderRadius = `${THEME.spacing.radius}px`;
+        el.style.padding = `${THEME.spacing.padding}px`;
+        el.style.boxShadow = THEME.glass.shadow;
+        el.style.display = 'flex';
+        el.style.flexDirection = 'column';
+        el.style.alignItems = 'center';
+        el.style.gap = '8px';
+        el.style.transition = 'transform 0.3s ease';
+    }
+}
 
 let ALL_HOURLY_DATA = [];
 const NWS_API = 'https://api.weather.gov';
 
 async function init() {
-    // Register Service Worker for PWA
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js')
@@ -38,28 +79,28 @@ async function init() {
     
     try {
         if (params.has('demo')) {
-            console.log('TrueTemp Demo Mode Active');
-            await fetchWeatherData(33.4484, -112.0740); // Phoenix, AZ
+            await fetchWeatherData(33.4484, -112.0740);
         } else {
             const coords = await getPosition();
             await fetchWeatherData(coords.latitude, coords.longitude);
         }
+        
+        // Listen for resize to recalculate "Pretext" layout
+        window.addEventListener('resize', () => {
+            if (UI.trends.container) {
+                LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);
+            }
+        });
     } catch (error) {
-        showError(error.message || 'Unable to retrieve location. Please check permissions.');
+        showError(error.message || 'Location error.');
     }
 }
 
 function getPosition() {
     return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            reject(new Error('Geolocation is not supported.'));
-        }
         navigator.geolocation.getCurrentPosition(
             (pos) => resolve(pos.coords),
-            (err) => {
-                const messages = { 1: 'Location access denied.', 2: 'Location unavailable.', 3: 'Request timed out.' };
-                reject(new Error(messages[err.code] || 'Location error.'));
-            },
+            (err) => reject(new Error('Location access denied.')),
             { enableHighAccuracy: true, timeout: 10000 }
         );
     });
@@ -98,7 +139,6 @@ async function fetchWeatherData(lat, lon) {
         
         let currentTemp = hourlyData.properties.periods[0].temperature;
         
-        // Attempt to get Real-Time Observation
         try {
             if (stationsRes.ok) {
                 const stationsData = await stationsRes.json();
@@ -112,14 +152,11 @@ async function fetchWeatherData(lat, lon) {
                         const celsius = obsData.properties.temperature.value;
                         if (celsius !== null) {
                             currentTemp = Math.round((celsius * 9/5) + 32);
-                            console.log(`Live Observation from ${stationId}: ${currentTemp}°F`);
                         }
                     }
                 }
             }
-        } catch (e) {
-            console.warn('Real-time observation failed, falling back to forecast.', e);
-        }
+        } catch (e) {}
 
         ALL_HOURLY_DATA = hourlyData.properties.periods || [];
 
@@ -146,21 +183,18 @@ async function fetchWeatherData(lat, lon) {
 
 function renderWeather(current, hourly) {
     if (!current) return;
-    
     if (UI.state) UI.state.style.display = 'none';
     if (UI.content) {
         UI.content.style.display = 'flex';
         UI.content.style.flexDirection = 'column';
         UI.content.style.gap = '1.5rem';
     }
-
     if (UI.temp) UI.temp.textContent = `${current.temperature}°`;
     if (UI.desc) UI.desc.textContent = current.shortForecast;
     if (UI.wind) UI.wind.textContent = `${current.windSpeed} ${current.windDirection}`;
     if (UI.humidity) UI.humidity.textContent = `${current.relativeHumidity?.value || '--'}%`;
     if (UI.feelsLike) UI.feelsLike.textContent = `${current.temperature}°`;
     if (UI.visibility) UI.visibility.textContent = '10 mi';
-
     renderHourly(hourly.slice(0, 24));
 }
 
@@ -168,12 +202,12 @@ function renderHourly(periods) {
     if (!UI.hourly) return;
     UI.hourly.innerHTML = '';
     periods.forEach(period => {
-        const time = new Date(period.startTime).toLocaleTimeString([], { hour: 'numeric' });
         const item = document.createElement('div');
         item.className = 'forecast-item';
+        const time = new Date(period.startTime).toLocaleTimeString([], { hour: 'numeric' });
         item.innerHTML = `
             <span class="hourly-time">${time}</span>
-            <img src="${period.icon}" alt="${period.shortForecast}">
+            <img src="${period.icon}" alt="icon" style="width:32px;">
             <span class="temp">${period.temperature}°</span>
         `;
         UI.hourly.appendChild(item);
@@ -183,7 +217,6 @@ function renderHourly(periods) {
 function renderDailyForecast(forecast) {
     if (!UI.daily || !forecast) return;
     UI.daily.innerHTML = '';
-    
     const grouped = [];
     for (let i = 0; i < forecast.length; i++) {
         const period = forecast[i];
@@ -201,30 +234,20 @@ function renderDailyForecast(forecast) {
         const item = document.createElement('div');
         item.className = 'forecast-item clickable';
         if (index === 0) item.classList.add('selected');
-        
         const mainP = day.day || day.night;
-        const icon = mainP.icon;
-        const dateStr = day.date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-
         item.innerHTML = `
             <span style="font-weight: 700;">${day.name}</span>
-            <span style="font-size: 0.7rem; color: var(--text-secondary);">${dateStr}</span>
-            <img src="${icon}" alt="${mainP.shortForecast}">
+            <span style="font-size: 0.7rem; opacity: 0.6;">${day.date.toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+            <img src="${mainP.icon}" alt="icon" style="width:32px;">
             <div style="display:flex; gap: 4px; align-items: baseline;">
                 <span class="temp">${mainP.temperature}°</span>
-                ${day.night ? `<span style="font-size: 0.75rem; opacity: 0.6;">${day.night.temperature}°</span>` : ''}
+                ${day.night ? `<span style="font-size: 0.75rem; opacity: 0.4;">${day.night.temperature}°</span>` : ''}
             </div>
         `;
-        
         item.onclick = () => {
             document.querySelectorAll('.forecast-item').forEach(i => i.classList.remove('selected'));
             item.classList.add('selected');
             updateAppFocus(day);
-            const filteredHourly = ALL_HOURLY_DATA.filter(h => new Date(h.startTime).toDateString() === day.dateKey);
-            if (filteredHourly.length > 0) {
-                renderHourly(filteredHourly);
-                UI.hourly.scrollTo({ left: 0, behavior: 'smooth' });
-            }
         };
         UI.daily.appendChild(item);
     });
@@ -239,7 +262,6 @@ function updateAppFocus(dayObj) {
     if (UI.humidity) UI.humidity.textContent = `${main.relativeHumidity?.value || '--'}%`;
     if (UI.date) UI.date.textContent = dayObj.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
     if (UI.feelsLike) UI.feelsLike.textContent = dayObj.night ? `${dayObj.night.temperature}° (Low)` : `${main.temperature}°`;
-    updateTheme(main.temperature, main.shortForecast);
 }
 
 async function fetchAlerts(lat, lon) {
@@ -277,33 +299,38 @@ async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
         const yest = new Date(now); yest.setDate(now.getDate() - 1);
         const ly = new Date(now); ly.setFullYear(now.getFullYear() - 1);
 
-        if (UI.trends.yesterday.el) {
-            const l = UI.trends.yesterday.el.querySelector('.trend-label');
-            if (l) l.textContent = `Yesterday (${yest.toLocaleDateString([], { month: 'short', day: 'numeric' })})`;
-        }
-        if (UI.trends.lastYear.el) {
-            const l = UI.trends.lastYear.el.querySelector('.trend-label');
-            if (l) l.textContent = `In ${ly.getFullYear()} (${ly.toLocaleDateString([], { month: 'short', day: 'numeric' })})`;
-        }
-
         const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${ly.toISOString().split('T')[0]}&end_date=${yest.toISOString().split('T')[0]}&daily=temperature_2m_max&temperature_unit=fahrenheit`);
         const data = await res.json();
         const yestT = Math.round(data.daily.temperature_2m_max[data.daily.temperature_2m_max.length - 1]);
         const lyT = Math.round(data.daily.temperature_2m_max[0]);
 
-        renderTrendItem(UI.trends.yesterday, yestT, currentTemp);
-        renderTrendItem(UI.trends.lastYear, lyT, currentTemp);
-        renderTrendItem(UI.trends.tomorrow, tomorrowTemp, currentTemp, true);
+        UI.trends.container.innerHTML = '';
+        UI.trends.items = [];
+
+        const trendData = [
+            { label: `Yesterday (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: yestT, diff: currentTemp - yestT },
+            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: lyT, diff: currentTemp - lyT },
+            { label: 'Tomorrow', temp: tomorrowTemp, diff: tomorrowTemp - currentTemp, isForward: true }
+        ];
+
+        trendData.forEach(d => {
+            const el = document.createElement('div');
+            const diff = d.diff;
+            const text = diff > 0 ? `+${diff}° hotter` : diff < 0 ? `${Math.abs(diff)}° cooler` : 'Same';
+            const badgeCls = diff > 0 ? 'hotter' : diff < 0 ? 'cooler' : '';
+            
+            el.innerHTML = `
+                <span style="font-size:0.7rem; color:var(--text-secondary); text-align:center;">${d.label}</span>
+                <span style="font-size:1.5rem; font-weight:700;">${d.temp}°</span>
+                <span class="diff-badge small ${badgeCls}" style="font-size:0.6rem; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,0.1);">${text}</span>
+            `;
+            UI.trends.container.appendChild(el);
+            UI.trends.items.push(el);
+        });
+
+        LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);
         UI.trends.container.style.display = 'grid';
     } catch (e) {}
-}
-
-function renderTrendItem(element, comparisonTemp, currentTemp, isForward = false) {
-    if (!element.temp || !element.diff) return;
-    element.temp.textContent = `${comparisonTemp}°`;
-    const diff = isForward ? (comparisonTemp - currentTemp) : (currentTemp - comparisonTemp);
-    element.diff.textContent = diff > 0 ? `+${diff}° hotter` : diff < 0 ? `${diff}° cooler` : 'Same';
-    element.diff.className = 'diff-badge small' + (diff > 0 ? ' hotter' : diff < 0 ? ' cooler' : '');
 }
 
 function updateLoading(msg) { if (UI.state) UI.state.innerHTML = `<div class="spinner"></div><p>${msg}</p>`; }

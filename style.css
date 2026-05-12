@@ -296,28 +296,6 @@ body {
     animation: slideDown 0.5s ease-out;
 }
 
-/* Trends Grid Styling */
-.trends-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    animation: slideUp 0.8s var(--transition-slow) forwards;
-}
-
-@media (max-width: 480px) {
-    .trends-container {
-        grid-template-columns: 1fr; /* Stack vertically on iPhone */
-        gap: 0.5rem;
-    }
-    
-    .trend-item {
-        flex-direction: row;
-        justify-content: space-between;
-        padding: 0.75rem 1.25rem;
-    }
-}
-
 .forecast-item.selected {
     background: rgba(56, 189, 248, 0.2);
     border-color: var(--accent);
@@ -334,57 +312,6 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
-.trend-item {
-    background: var(--card-bg);
-    backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--card-border);
-    border-radius: 1.5rem;
-    padding: 1rem 0.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    text-align: center;
-    cursor: pointer;
-    transition: var(--transition-fast);
-}
-
-.trend-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateY(-3px);
-}
-
-.trend-item:active {
-    transform: scale(0.95);
-}
-
-.trend-label {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.trend-value {
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-.diff-badge.small {
-    font-size: 0.65rem;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-top: 4px;
-}
-
-.diff-badge.hotter { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
-.diff-badge.cooler { background: rgba(34, 197, 94, 0.2); color: #86efac; }
-
-.historical-note {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    font-style: italic;
-}
 
 @keyframes slideDown {
     from { transform: translateY(-20px); opacity: 0; }

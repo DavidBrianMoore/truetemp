@@ -128,22 +128,6 @@ class LayoutEngine {
         else if (type === 'scroll') this.applyScrollSafeZone(el);
         else if (type === 'hero') this.applyHeroStyle(el);
     }
-
-    static generateNarrative(current, yesterday, tomorrow) {
-        const diffY = current - yesterday;
-        const diffT = tomorrow - current;
-        
-        let story = `**Meteorological Briefing:** Today's peak of **${current}°F** `;
-        if (Math.abs(diffY) < 2) story += `matches yesterday's trend. `;
-        else if (diffY > 0) story += `is a **${Math.abs(diffY)}° spike** from yesterday. `;
-        else story += `is a **${Math.abs(diffY)}° cooling** from yesterday. `;
-        
-        if (diffT > 3) story += `Prepare for further heating tomorrow as the trend continues upward.`;
-        else if (diffT < -3) story += `Expect relief soon—tomorrow's forecast shows a cooling trend.`;
-        else story += `Stable conditions expected to persist through the next 24 hours.`;
-        
-        return story;
-    }
 }
 
 let ALL_HOURLY_DATA = [];
@@ -277,10 +261,20 @@ async function fetchWeatherData(lat, lon) {
         }
         
         if (dailyData.properties.periods) {
-            const today = dailyData.properties.periods[0];
-            const tonight = dailyData.properties.periods[1];
-            UI.set('high', `${today.temperature}°`);
-            UI.set('low', `${tonight.temperature}°`);
+            const p0 = dailyData.properties.periods[0];
+            const p1 = dailyData.properties.periods[1];
+            
+            let high, low;
+            if (p0.isDaytime) {
+                high = p0.temperature;
+                low = p1.temperature;
+            } else {
+                low = p0.temperature;
+                high = p1.temperature;
+            }
+            
+            UI.set('high', `${high}°`);
+            UI.set('low', `${low}°`);
             renderDailyForecast(dailyData.properties.periods);
         }
 
@@ -288,15 +282,6 @@ async function fetchWeatherData(lat, lon) {
         
         if (ALL_HOURLY_DATA.length > 0 && dailyData.properties.periods) {
             const tomorrowTemp = dailyData.properties.periods[1]?.temperature || ALL_HOURLY_DATA[0].temperature;
-            const yesterdayTemp = ALL_HOURLY_DATA[0].temperature - 5; // Fallback calculation for story
-            
-            // Inject Pretext Narrative
-            const narrativeEl = document.getElementById('narrative-briefing');
-            if (narrativeEl) {
-                narrativeEl.style.display = 'block';
-                narrativeEl.innerHTML = LayoutEngine.generateNarrative(ALL_HOURLY_DATA[0].temperature, yesterdayTemp, tomorrowTemp);
-            }
-            
             fetchTrends(lat, lon, ALL_HOURLY_DATA[0].temperature, tomorrowTemp);
         }
     } catch (error) {

@@ -107,11 +107,35 @@ body {
 /* Loading State */
 #app {
     width: 100%;
-    max-width: 500px;
+    max-width: 1200px;
     margin: 0 auto;
     overflow-x: hidden;
     display: block;
     min-width: 0;
+    padding: 1rem;
+}
+
+#weather-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+@media (min-width: 1000px) {
+    #weather-content {
+        grid-template-columns: 1fr 1fr;
+        align-items: start;
+    }
+    
+    .current-weather {
+        grid-row: span 2;
+    }
+}
+
+@media (max-width: 600px) {
+    #app {
+        padding: 0;
+    }
 }
 .loading {
     display: flex;

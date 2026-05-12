@@ -308,6 +308,8 @@ function renderDailyForecast(forecast) {
 
     // Apply Pretext safe-zone logic to prevent clipping
     LayoutEngine.applyScrollSafeZone(UI.daily);
+    UI.daily.style.display = 'flex';
+    UI.daily.style.flexWrap = 'nowrap';
 }
 
 function updateAppFocus(dayObj) {

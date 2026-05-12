@@ -33,9 +33,16 @@ async function init() {
         });
     }
 
+    const params = new URLSearchParams(window.location.search);
+    
     try {
-        const coords = await getPosition();
-        await fetchWeatherData(coords.latitude, coords.longitude);
+        if (params.has('demo')) {
+            console.log('TrueTemp Demo Mode Active');
+            await fetchWeatherData(33.4484, -112.0740); // Phoenix, AZ
+        } else {
+            const coords = await getPosition();
+            await fetchWeatherData(coords.latitude, coords.longitude);
+        }
     } catch (error) {
         showError(error.message || 'Unable to retrieve location. Please check permissions.');
     }

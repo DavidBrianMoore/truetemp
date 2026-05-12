@@ -100,8 +100,14 @@ async function init() {
         if (params.has('demo')) {
             await fetchWeatherData(33.4484, -112.0740);
         } else {
-            const coords = await getPosition();
-            await fetchWeatherData(coords.latitude, coords.longitude);
+            try {
+                const coords = await getPosition();
+                await fetchWeatherData(coords.latitude, coords.longitude);
+            } catch (err) {
+                console.warn('Geolocation failed, using fallback:', err.message);
+                // Fallback to Phoenix, AZ if location is denied
+                await fetchWeatherData(33.4484, -112.0740);
+            }
         }
         
         // Listen for resize to recalculate "Pretext" layout
@@ -126,11 +132,15 @@ function getPosition() {
 }
 
 async function fetchWeatherData(lat, lon) {
+    if (lat === undefined || lon === undefined) {
+        showError('Invalid coordinates provided.');
+        return;
+    }
     try {
         updateLoading('Fetching local grid data...');
         const t = Date.now();
         
-        const pointsRes = await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`, {
+        const pointsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`, {
             headers: { 
                 'User-Agent': 'TrueTempApp/1.0',
                 'Cache-Control': 'no-cache'

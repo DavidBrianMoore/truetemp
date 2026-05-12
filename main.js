@@ -12,7 +12,8 @@ const THEME = {
         gap: 12,
         padding: 16,
         radius: 24
-    }
+    },
+    accent: '#38bdf8'
 };
 
 const UI = {
@@ -346,6 +347,7 @@ function updateTheme(temp, condition) {
     root.style.setProperty('--bg-color-1', color1);
     root.style.setProperty('--bg-color-2', color2);
     root.style.setProperty('--accent', accent);
+    THEME.accent = accent;
 }
 
 async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {

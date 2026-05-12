@@ -76,6 +76,7 @@ async function fetchWeatherData(lat, lon) {
     const { city, state } = relativeLocation.properties;
 
     UI.city.textContent = `${city}, ${state}`;
+    UI.date.textContent = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
     // Step 2: Get forecasts
     updateLoading('Analyzing atmospheric conditions...');
@@ -139,12 +140,17 @@ function renderHourly(periods) {
 function renderDailyForecast(forecast) {
     UI.daily.innerHTML = '';
     forecast.forEach((period, index) => {
+        const date = new Date(period.startTime);
+        const dayName = period.name;
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
         const item = document.createElement('div');
         item.className = 'forecast-item clickable';
         if (index === 0) item.classList.add('selected');
         
         item.innerHTML = `
-            <span>${period.name}</span>
+            <span style="font-weight: 700;">${dayName}</span>
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">${dateStr}</span>
             <img src="${period.icon}" alt="${period.shortForecast}">
             <span class="temp">${period.temperature}°</span>
         `;
@@ -250,6 +256,10 @@ async function fetchTrends(lat, lon, currentTemp, tomorrowTemp) {
 
         const yestStr = yesterday.toISOString().split('T')[0];
         const lastYearStr = lastYear.toISOString().split('T')[0];
+
+        // Update Labels with dates
+        UI.trends.yesterday.el.querySelector('.trend-label').textContent = `Yesterday (${yesterday.toLocaleDateString([], { month: 'short', day: 'numeric' })})`;
+        UI.trends.lastYear.el.querySelector('.trend-label').textContent = `In ${lastYear.getFullYear()} (${lastYear.toLocaleDateString([], { month: 'short', day: 'numeric' })})`;
 
         // Fetch Yesterday & Last Year from Archive
         const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lastYearStr}&end_date=${yestStr}&daily=temperature_2m_max&temperature_unit=fahrenheit`);

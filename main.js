@@ -44,7 +44,8 @@ const UI = {
 class LayoutEngine {
     static applyGrid(container, items, options = { columns: 3 }) {
         const width = container.offsetWidth;
-        const cols = width < 400 ? 1 : options.columns;
+        // Logic: Keep 3 columns for trends unless extremely narrow (<320px)
+        const cols = width < 320 ? 1 : options.columns;
         
         container.style.display = 'grid';
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
@@ -79,13 +80,21 @@ class LayoutEngine {
 
     static applyHeroStyle(container) {
         if (!container) return;
+        const isMobile = window.innerWidth < 480;
         container.style.display = 'flex';
         container.style.flexDirection = 'column';
         container.style.alignItems = 'center';
         container.style.textAlign = 'center';
-        container.style.padding = '2rem 1rem';
-        container.style.gap = '0.5rem';
+        container.style.padding = isMobile ? '1rem 0.5rem' : '2rem 1rem';
+        container.style.gap = '0.25rem';
         container.style.animation = 'slideDown 0.8s ease-out';
+        
+        // Scale the temperature text
+        const tempEl = container.querySelector('.temperature');
+        if (tempEl) {
+            tempEl.style.fontSize = isMobile ? '4rem' : '6rem';
+            tempEl.style.margin = '0.25rem 0';
+        }
     }
 }
 
@@ -247,6 +256,19 @@ function renderWeather(current, hourly) {
     UI.set('humidity', `${current.relativeHumidity?.value || '--'}%`);
     UI.set('feelsLike', `${current.temperature}°`);
     UI.set('visibility', '10 mi');
+    
+    // Inject 2-column info grid logic
+    const infoGrid = document.querySelector('.info-grid');
+    if (infoGrid) {
+        infoGrid.style.display = 'grid';
+        infoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        infoGrid.style.gap = '10px';
+        infoGrid.querySelectorAll('.info-item').forEach(item => {
+            LayoutEngine.applyCardStyle(item);
+            item.style.padding = '12px';
+        });
+    }
+
     renderHourly(hourly.slice(0, 24));
 }
 

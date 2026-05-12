@@ -139,42 +139,88 @@ function renderHourly(periods) {
 
 function renderDailyForecast(forecast) {
     UI.daily.innerHTML = '';
-    forecast.forEach((period, index) => {
-        const date = new Date(period.startTime);
-        const dayName = period.name;
-        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    
+    // Group Day/Night periods by Date
+    const grouped = [];
+    for (let i = 0; i < forecast.length; i++) {
+        const period = forecast[i];
+        const dateKey = new Date(period.startTime).toDateString();
+        
+        let dayObj = grouped.find(g => g.dateKey === dateKey);
+        if (!dayObj) {
+            dayObj = { 
+                dateKey, 
+                name: period.name.replace(' Night', ''), 
+                date: new Date(period.startTime),
+                day: null, 
+                night: null 
+            };
+            grouped.push(dayObj);
+        }
 
+        if (period.isDaytime) dayObj.day = period;
+        else dayObj.night = period;
+    }
+
+    grouped.forEach((day, index) => {
         const item = document.createElement('div');
         item.className = 'forecast-item clickable';
         if (index === 0) item.classList.add('selected');
         
+        const displayTemp = day.day ? day.day.temperature : day.night.temperature;
+        const icon = day.day ? day.day.icon : day.night.icon;
+        const desc = day.day ? day.day.shortForecast : day.night.shortForecast;
+        const dateStr = day.date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
         item.innerHTML = `
-            <span style="font-weight: 700;">${dayName}</span>
-            <span style="font-size: 0.75rem; color: var(--text-secondary);">${dateStr}</span>
-            <img src="${period.icon}" alt="${period.shortForecast}">
-            <span class="temp">${period.temperature}°</span>
+            <span style="font-weight: 700;">${day.name}</span>
+            <span style="font-size: 0.7rem; color: var(--text-secondary);">${dateStr}</span>
+            <img src="${icon}" alt="${desc}">
+            <div style="display:flex; gap: 4px; align-items: baseline;">
+                <span class="temp">${displayTemp}°</span>
+                ${day.night ? `<span style="font-size: 0.75rem; opacity: 0.6;">${day.night.temperature}°</span>` : ''}
+            </div>
         `;
         
         item.onclick = () => {
-            // Remove selected from others
             document.querySelectorAll('.forecast-item').forEach(i => i.classList.remove('selected'));
             item.classList.add('selected');
 
-            // Filter hourly data for this specific day
-            const targetDate = new Date(period.startTime).toDateString();
-            const filteredHourly = ALL_HOURLY_DATA.filter(h => 
-                new Date(h.startTime).toDateString() === targetDate
-            );
+            // Shift App Focus to this Day
+            updateAppFocus(day);
             
+            // Update Hourly
+            const filteredHourly = ALL_HOURLY_DATA.filter(h => 
+                new Date(h.startTime).toDateString() === day.dateKey
+            );
             if (filteredHourly.length > 0) {
                 renderHourly(filteredHourly);
-                // Scroll hourly back to start
                 UI.hourly.scrollTo({ left: 0, behavior: 'smooth' });
             }
         };
         
         UI.daily.appendChild(item);
     });
+}
+
+function updateAppFocus(dayObj) {
+    const main = dayObj.day || dayObj.night;
+    
+    UI.temp.textContent = `${main.temperature}°`;
+    UI.desc.textContent = main.shortForecast;
+    UI.wind.textContent = `${main.windSpeed} ${main.windDirection}`;
+    UI.humidity.textContent = `${main.relativeHumidity?.value || '--'}%`;
+    UI.date.textContent = dayObj.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    
+    // For historical/forecasted focus, we show the High/Low in the feels-like spot
+    if (dayObj.night) {
+        UI.feelsLike.textContent = `${dayObj.night.temperature}° (Low)`;
+    } else {
+        UI.feelsLike.textContent = `${main.temperature}°`;
+    }
+
+    // Dynamic theme update for the focused day
+    updateTheme(main.temperature, main.shortForecast);
 }
 
 /**

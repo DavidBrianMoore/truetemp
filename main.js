@@ -87,10 +87,11 @@ class LayoutEngine {
         container.style.maxWidth = '100%';
         container.style.display = 'flex';
         container.style.gap = '1rem';
-        container.style.overflowX = 'auto';
+        container.style.overflowX = 'scroll';
         container.style.overflowY = 'hidden';
         container.style.scrollbarWidth = 'none';
         container.style.webkitOverflowScrolling = 'touch';
+        container.style.touchAction = 'pan-x pan-y';
         container.style.scrollSnapType = 'x mandatory';
         container.style.justifyContent = 'flex-start';
         container.style.flexShrink = '1';

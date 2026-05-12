@@ -73,10 +73,11 @@ body {
 .forecast-scroll {
     display: flex;
     gap: 1rem;
-    overflow-x: auto;
+    overflow-x: scroll;
     overflow-y: hidden;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
     scroll-snap-type: x mandatory;
     width: 100%;
     max-width: 100%;

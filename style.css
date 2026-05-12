@@ -52,6 +52,12 @@ body {
 
 /* Layout is now managed by the Pretext Engine in main.js */
 .card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
     display: block;
     width: 100%;
     min-width: 0;
@@ -73,7 +79,7 @@ body {
 .forecast-scroll {
     display: flex;
     gap: 1rem;
-    overflow-x: scroll;
+    overflow-x: scroll !important;
     overflow-y: hidden;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
@@ -123,12 +129,14 @@ body {
 
 @media (min-width: 1000px) {
     #weather-content {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 450px 1fr;
         align-items: start;
     }
     
     .current-weather {
-        grid-row: span 2;
+        grid-row: span 4;
+        position: sticky;
+        top: 1rem;
     }
 }
 

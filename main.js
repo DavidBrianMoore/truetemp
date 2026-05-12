@@ -71,10 +71,20 @@ class LayoutEngine {
 
     static applyScrollSafeZone(container) {
         if (!container) return;
-        // Inject Pretext-style safe zone padding for highlights
         container.style.paddingTop = '12px';
         container.style.paddingBottom = '16px';
-        container.style.marginTop = '-12px'; // Offset to maintain vertical rhythm
+        container.style.marginTop = '-12px';
+    }
+
+    static applyHeroStyle(container) {
+        if (!container) return;
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.alignItems = 'center';
+        container.style.textAlign = 'center';
+        container.style.padding = '2rem 1rem';
+        container.style.gap = '0.5rem';
+        container.style.animation = 'slideDown 0.8s ease-out';
     }
 }
 
@@ -227,9 +237,8 @@ function renderWeather(current, hourly) {
     if (!current) return;
     if (UI.state) UI.state.style.display = 'none';
     if (UI.content) {
+        LayoutEngine.applyHeroStyle(UI.content);
         UI.content.style.display = 'flex';
-        UI.content.style.flexDirection = 'column';
-        UI.content.style.gap = '1.5rem';
     }
     UI.set('temp', `${current.temperature}°`);
     UI.set('desc', current.shortForecast);
@@ -246,6 +255,7 @@ function renderHourly(periods) {
     periods.forEach(period => {
         const item = document.createElement('div');
         item.className = 'forecast-item';
+        LayoutEngine.applyCardStyle(item);
         const time = new Date(period.startTime).toLocaleTimeString([], { hour: 'numeric' });
         item.innerHTML = `
             <span class="hourly-time">${time}</span>
@@ -254,6 +264,7 @@ function renderHourly(periods) {
         `;
         UI.hourly.appendChild(item);
     });
+    LayoutEngine.applyScrollSafeZone(UI.hourly);
 }
 
 function renderDailyForecast(forecast) {

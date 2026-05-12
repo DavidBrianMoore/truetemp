@@ -66,12 +66,17 @@ class LayoutEngine {
     static applyCardStyle(el) {
         if (!el) return;
         el.style.background = THEME.glass.bg;
+        el.style.border = THEME.glass.border;
         el.style.backdropFilter = THEME.glass.blur;
         el.style.webkitBackdropFilter = THEME.glass.blur;
-        el.style.border = THEME.glass.border;
         el.style.borderRadius = `${THEME.spacing.radius}px`;
         el.style.padding = `${THEME.spacing.padding}px`;
         el.style.boxShadow = THEME.glass.shadow;
+        el.style.overflow = 'hidden';
+        el.style.width = '100%';
+        el.style.maxWidth = '100%';
+        el.style.minWidth = '0';
+        el.style.boxSizing = 'border-box';
         el.style.display = 'flex';
         el.style.flexDirection = 'column';
         el.style.alignItems = 'center';
@@ -86,16 +91,21 @@ class LayoutEngine {
         container.style.marginTop = '-12px';
         container.style.width = '100%';
         container.style.maxWidth = '100%';
+        container.style.display = 'flex';
+        container.style.gap = '1rem';
         container.style.overflowX = 'auto';
         container.style.overflowY = 'hidden';
-        container.style.boxSizing = 'border-box';
-        container.style.flexShrink = '1'; 
+        container.style.scrollbarWidth = 'none';
+        container.style.webkitOverflowScrolling = 'touch';
+        container.style.scrollSnapType = 'x mandatory';
         container.style.justifyContent = 'flex-start';
-        container.style.contain = 'layout';
+        container.style.flexShrink = '1';
         container.style.minWidth = '0';
+        container.style.contain = 'layout';
         
         // Ensure child items don't stretch the scroller beyond reason
         [...container.children].forEach(child => {
+            child.style.scrollSnapAlign = 'start';
             child.style.flexShrink = '0';
             child.style.width = '100px';
             child.style.minWidth = '100px';
@@ -114,8 +124,9 @@ class LayoutEngine {
         container.style.padding = isMobile ? '1rem 0' : '2rem 1rem';
         container.style.gap = isMobile ? '0.2rem' : '0.5rem';
         container.style.width = '100%';
-        container.style.maxWidth = '100%';
-        container.style.overflow = 'hidden';
+        container.style.maxWidth = '500px';
+        container.style.margin = '0 auto';
+        container.style.overflowX = 'hidden';
         
         const tempEl = container.querySelector('.temperature');
         if (tempEl) {

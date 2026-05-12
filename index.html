@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>TrueTemp - High Accuracy Weather</title>
+    <meta name="description" content="Precise local weather powered by NWS GPS data.">
+    
+    <!-- PWA & Apple Support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TrueTemp">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1163/1163734.png">
+    
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="bg-blob"></div>
+    
+    <main id="app">
+        <!-- Initial State: Loading or Request Permission -->
+        <div id="ui-state" class="loading">
+            <div class="spinner"></div>
+            <p>Gathering local atmospheric data...</p>
+        </div>
+
+        <!-- Weather Content (Hidden initially) -->
+        <div id="weather-content" style="display: none;">
+            <header class="current-weather card">
+                <div class="location-name" id="city-name">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span>Detecting Location...</span>
+                </div>
+                <div class="temperature" id="current-temp">--°</div>
+                <div class="condition" id="weather-desc">Cloudy</div>
+            </header>
+
+            <section class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Feels Like</span>
+                    <span class="info-value" id="feels-like">--°</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Wind Speed</span>
+                    <span class="info-value" id="wind-speed">-- mph</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Humidity</span>
+                    <span class="info-value" id="humidity">--%</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Visibility</span>
+                    <span class="info-value" id="visibility">-- mi</span>
+                </div>
+            </section>
+
+            <section class="forecast-container">
+                <h3 style="margin-bottom: 1rem; color: var(--text-secondary); font-weight: 600;">Hourly Forecast</h3>
+                <div class="forecast-scroll" id="hourly-forecast">
+                    <!-- Hourly items will be injected here -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+</body>
+</html>

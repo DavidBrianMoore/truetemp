@@ -45,6 +45,13 @@ body {
     gap: 1.5rem;
 }
 
+#weather-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    width: 100%;
+}
+
 /* Background Animation */
 .bg-blob {
     position: fixed;

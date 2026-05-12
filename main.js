@@ -118,7 +118,11 @@ function renderWeather(current, hourly) {
     if (!current) return;
     
     if (UI.state) UI.state.style.display = 'none';
-    if (UI.content) UI.content.style.display = 'flex';
+    if (UI.content) {
+        UI.content.style.display = 'flex';
+        UI.content.style.flexDirection = 'column';
+        UI.content.style.gap = '1.5rem';
+    }
 
     if (UI.temp) UI.temp.textContent = `${current.temperature}°`;
     if (UI.desc) UI.desc.textContent = current.shortForecast;

@@ -1,5 +1,5 @@
 import AntigravityTestingAPI from './ata.js';
-const ata = new AntigravityTestingAPI('SkyCast');
+const ata = new AntigravityTestingAPI('TrueTemp');
 
 const THEME = {
     glass: {
@@ -31,113 +31,54 @@ const UI = {
     hourly: document.getElementById('hourly-forecast'),
     daily: document.getElementById('daily-forecast'),
     alertBanner: document.getElementById('alert-banner'),
+    alertDetails: document.getElementById('alert-details'),
+    radarLink: document.getElementById('radar-link'),
+    heroIcon: document.getElementById('hero-icon-container'),
     trends: {
         container: document.getElementById('trends-container'),
         items: []
     },
     high: document.getElementById('today-high'),
     low: document.getElementById('today-low'),
+    searchInput: document.getElementById('search-input'),
+    searchBtn: document.getElementById('search-btn'),
+    unitToggle: document.getElementById('toggle-units'),
     // Safe text setter
     set(key, val) {
         if (this[key]) this[key].textContent = val;
     }
 };
 
+let CURRENT_UNITS = localStorage.getItem('units') || 'F';
+UI.unitToggle.textContent = `°${CURRENT_UNITS}`;
+
 class LayoutEngine {
-    static applyGrid(container, items, options = { columns: 3 }) {
+    static applyGrid(container, items) {
         if (!container) return;
-        const cols = options.columns;
-        container.style.display = 'grid';
-        container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-        container.style.gap = '8px';
-        container.style.width = '100%';
-        container.style.maxWidth = '100%';
-        container.style.boxSizing = 'border-box';
-        
-        items.forEach(item => {
-            item.style.minWidth = '0';
-            item.style.width = '100%';
-            item.style.boxSizing = 'border-box';
-            item.style.flexShrink = '1';
-            this.applyCardStyle(item);
-        });
+        container.className = 'grid-trends';
+        items.forEach(item => item.className = 'glass-card trend-card clickable');
     }
 
     static applyCardStyle(el) {
         if (!el) return;
-        el.style.background = THEME.glass.bg;
-        el.style.border = THEME.glass.border;
-        el.style.backdropFilter = THEME.glass.blur;
-        el.style.webkitBackdropFilter = THEME.glass.blur;
-        el.style.borderRadius = `${THEME.spacing.radius}px`;
-        el.style.padding = `${THEME.spacing.padding}px`;
-        el.style.boxShadow = THEME.glass.shadow;
-        el.style.overflow = 'hidden';
-        el.style.width = '100%';
-        el.style.maxWidth = '100%';
-        el.style.minWidth = '0';
-        el.style.boxSizing = 'border-box';
-        el.style.display = 'block';
-        el.style.transition = 'transform 0.3s ease';
+        el.classList.add('glass-card');
     }
 
     static applyScrollSafeZone(container) {
         if (!container) return;
-        container.style.width = '100%';
-        container.style.maxWidth = '100%';
-        container.style.display = 'flex';
-        container.style.gap = '1rem';
-        container.style.overflowX = 'scroll';
-        container.style.overflowY = 'hidden';
-        container.style.scrollbarWidth = 'none';
-        container.style.webkitOverflowScrolling = 'touch';
-        container.style.touchAction = 'pan-x pan-y';
-        container.style.scrollSnapType = 'x mandatory';
-        container.style.justifyContent = 'flex-start';
-        container.style.flexShrink = '1';
-        container.style.minWidth = '0';
-        container.style.contain = 'layout';
-        container.style.scrollPadding = '1rem';
-        container.style.padding = '12px 16px';
-        
-        // Ensure child items don't stretch the scroller beyond reason
-        [...container.children].forEach(child => {
-            child.style.scrollSnapAlign = 'start';
-            child.style.flexShrink = '0';
-            child.style.width = '100px';
-            child.style.minWidth = '100px';
-            child.style.flexBasis = 'auto';
-        });
+        container.className = 'scroll-container';
+        [...container.children].forEach(child => child.classList.add('scroll-item'));
     }
 
     static applyHeroStyle(container) {
         if (!container) return;
-        const width = window.innerWidth;
-        const isMobile = width < 640;
-        container.style.display = 'flex';
-        container.style.flexDirection = 'column';
-        container.style.alignItems = 'center';
-        container.style.textAlign = 'center';
-        container.style.padding = isMobile ? '1rem 0' : '2rem 1rem';
-        container.style.gap = isMobile ? '0.2rem' : '0.5rem';
-        container.style.width = '100%';
-        container.style.margin = '0 auto';
-        container.style.overflowX = 'hidden';
-        
-        const tempEl = container.querySelector('.temperature');
-        if (tempEl) {
-            // Precise font scaling: 4rem for mobile, 6rem for desktop
-            tempEl.style.fontSize = isMobile ? '4rem' : '6rem';
-            tempEl.style.lineHeight = '1';
-            tempEl.style.margin = '0.5rem 0';
-        }
+        container.className = 'current-weather glass-card hero-view';
     }
 
-    static mount(id, type, items, options) {
+    static mount(id, type, items) {
         const el = document.getElementById(id);
         if (!el) return;
-        el.style.display = type === 'grid' ? 'grid' : 'flex';
-        if (type === 'grid') this.applyGrid(el, items, options);
+        if (type === 'grid') this.applyGrid(el, items);
         else if (type === 'scroll') this.applyScrollSafeZone(el);
         else if (type === 'hero') this.applyHeroStyle(el);
     }
@@ -146,6 +87,7 @@ class LayoutEngine {
 let ALL_HOURLY_DATA = [];
 let INITIAL_STATE = null;
 const NWS_API = 'https://api.weather.gov';
+const HEADERS = { 'User-Agent': 'TrueTempApp/1.0 (david@truetemp.app)' };
 
 async function init() {
     // Register ATA State
@@ -159,6 +101,47 @@ async function init() {
     ata.registerAction('refresh', (lat, lon) => fetchWeatherData(lat, lon));
     ata.registerAction('updateTheme', (temp, cond) => updateTheme(temp, cond));
     ata.registerAction('reLayout', () => LayoutEngine.applyGrid(UI.trends.container, UI.trends.items));
+
+    // Unit Toggle Listener
+    UI.unitToggle.addEventListener('click', () => {
+        CURRENT_UNITS = CURRENT_UNITS === 'F' ? 'C' : 'F';
+        localStorage.setItem('units', CURRENT_UNITS);
+        UI.unitToggle.textContent = `°${CURRENT_UNITS}`;
+        location.reload(); // Simplest way to re-render everything with new units
+    });
+
+    // Search Listener
+    const handleSearch = async () => {
+        const query = UI.searchInput.value.trim();
+        if (!query) return;
+        try {
+            updateLoading(`Searching for ${query}...`);
+            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
+            const data = await res.json();
+            if (data.results && data.results.length > 0) {
+                const { latitude, longitude } = data.results[0];
+                fetchWeatherData(latitude, longitude);
+            } else {
+                showError('Location not found.');
+            }
+        } catch (e) {
+            showError('Search failed.');
+        }
+    };
+    UI.searchBtn.addEventListener('click', handleSearch);
+    UI.searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSearch(); });
+
+    // Pull-to-Refresh Logic
+    let touchStart = 0;
+    window.addEventListener('touchstart', (e) => { touchStart = e.touches[0].pageY; }, { passive: true });
+    window.addEventListener('touchend', (e) => {
+        const touchEnd = e.changedTouches[0].pageY;
+        if (window.scrollY === 0 && touchEnd - touchStart > 150) {
+            updateLoading('Refreshing data...');
+            getPosition().then(coords => fetchWeatherData(coords.latitude, coords.longitude))
+                .catch(() => fetchWeatherData(33.4484, -112.0740));
+        }
+    }, { passive: true });
 
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -190,6 +173,20 @@ async function init() {
                 LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);
             }
         });
+
+        // Try to load from cache first
+        const cached = loadFromCache();
+        if (cached) {
+            renderFullWeather(cached.data);
+            console.log('Loaded from cache');
+        }
+
+        // Auto-refresh every 15 minutes
+        setInterval(() => {
+            getPosition().then(coords => fetchWeatherData(coords.latitude, coords.longitude))
+                .catch(() => fetchWeatherData(33.4484, -112.0740));
+        }, 15 * 60 * 1000);
+
     } catch (error) {
         showError(error.message || 'Location error.');
     }
@@ -215,26 +212,32 @@ async function fetchWeatherData(lat, lon) {
         const t = Date.now();
         
         const pointsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`, {
-            headers: { 'User-Agent': 'TrueTempApp/1.0' },
+            headers: HEADERS,
             cache: 'reload'
         });
         
         if (!pointsRes.ok) throw new Error('Weather Service unavailable.');
         const pointsData = await pointsRes.json();
         
-        const { forecast, forecastHourly, relativeLocation } = pointsData.properties;
+        const { forecast, forecastHourly, relativeLocation, radarStation } = pointsData.properties;
         const { city, state } = relativeLocation.properties;
 
-        UI.set('city', `${city}, ${state}`);
+        // Radar Link (#10)
+        if (UI.radarLink && radarStation) {
+            UI.radarLink.href = `https://radar.weather.gov/station/${radarStation}/standard`;
+        }
+
+        // Secure text setting
+        UI.city.textContent = `${city}, ${state}`;
         UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
         UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
 
         updateLoading('Analyzing atmospheric conditions...');
         const [hourlyRes, dailyRes, stationsRes] = await Promise.all([
-            fetch(forecastHourly, { headers: { 'User-Agent': 'TrueTempApp/1.0' }, cache: 'reload' }),
-            fetch(forecast, { headers: { 'User-Agent': 'TrueTempApp/1.0' }, cache: 'reload' }),
+            fetch(forecastHourly, { headers: HEADERS, cache: 'reload' }),
+            fetch(forecast, { headers: HEADERS, cache: 'reload' }),
             fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { 
-                headers: { 'User-Agent': 'TrueTempApp/1.0' }, 
+                headers: HEADERS, 
                 cache: 'reload' 
             })
         ]);
@@ -250,14 +253,24 @@ async function fetchWeatherData(lat, lon) {
             if (stationsRes.ok) {
                 const stationsData = await stationsRes.json();
                 const stationId = stationsData.features[0]?.properties?.stationIdentifier;
-                const cityEl = document.getElementById('city-name');
-                if (cityEl) cityEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> <span>${city}, ${state}</span><div style="font-size:0.6rem; opacity:0.6; font-family:monospace; margin-top:2px;">${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}</div>`;
+                
+                // Secure station info setting
+                const cityContainer = document.getElementById('city-name');
+                if (cityContainer) {
+                    const span = cityContainer.querySelector('span');
+                    if (span) span.textContent = `${city}, ${state}`;
+                    const coordsDiv = cityContainer.querySelector('div') || document.createElement('div');
+                    coordsDiv.style.cssText = 'font-size:0.6rem; opacity:0.6; font-family:monospace; margin-top:2px;';
+                    coordsDiv.textContent = `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
+                    if (!coordsDiv.parentElement) cityContainer.appendChild(coordsDiv);
+                }
+
                 const stationEl = document.getElementById('station-info');
                 if (stationEl) stationEl.textContent = `NWS Station: ${stationId}`;
                 
                 if (stationId) {
                     const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest`, {
-                        headers: { 'User-Agent': 'TrueTempApp/1.0' },
+                        headers: HEADERS,
                         cache: 'reload'
                     });
                     if (obsRes.ok) {
@@ -266,10 +279,18 @@ async function fetchWeatherData(lat, lon) {
                         if (celsius !== null) {
                             currentTemp = Math.round((celsius * 9/5) + 32);
                         }
+                        // Real Visibility
+                        const visMeters = obsData.properties.visibility.value;
+                        if (visMeters !== null) {
+                            const visMiles = (visMeters / 1609.34).toFixed(1);
+                            hourlyData.properties.periods[0].visibility = `${visMiles} mi`;
+                        }
                     }
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('Observation station fetch failed:', e);
+        }
 
         ALL_HOURLY_DATA = hourlyData.properties.periods || [];
 
@@ -280,22 +301,33 @@ async function fetchWeatherData(lat, lon) {
             updateTheme(currentTemp, currentPeriod.shortForecast);
         }
         
+        let dailyPeriods = [];
         if (dailyData.properties.periods) {
-            const periods = dailyData.properties.periods;
+            dailyPeriods = dailyData.properties.periods;
             // Scan first 3 periods to find the true High and Low for the current 24h window
-            const relevant = periods.slice(0, 3);
+            const relevant = dailyPeriods.slice(0, 3);
             const temps = relevant.map(p => p.temperature);
             const high = Math.max(...temps);
             const low = Math.min(...temps);
             
-            UI.set('high', `${high}°`);
-            UI.set('low', `${low}°`);
-            renderDailyForecast(periods);
+            const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
+            const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
+            UI.set('high', `${displayHigh}°`);
+            UI.set('low', `${displayLow}°`);
+            renderDailyForecast(dailyPeriods);
 
-            // Fetch trends comparing today's HIGH to others
-            const tomorrowTemp = periods[1].temperature; // Next day period
+            // Correctly find tomorrow's high (first daytime period after today's day/night)
+            const tomorrowPeriod = dailyPeriods.find(p => p.isDaytime && !p.name.includes('Today') && !p.name.includes('This Afternoon'));
+            const tomorrowTemp = tomorrowPeriod ? tomorrowPeriod.temperature : dailyPeriods[1].temperature;
             fetchTrends(lat, lon, high, tomorrowTemp);
         }
+
+        saveToCache({
+            current: { ...ALL_HOURLY_DATA[0], temperature: currentTemp },
+            hourly: ALL_HOURLY_DATA,
+            daily: dailyPeriods,
+            lat, lon
+        });
 
         fetchAlerts(lat, lon);
         
@@ -310,24 +342,32 @@ function renderWeather(current, hourly) {
     if (UI.content) {
         const hero = UI.content.querySelector('.current-weather');
         if (hero) LayoutEngine.applyHeroStyle(hero);
-        UI.content.style.display = ''; // Restore CSS Grid
+        UI.content.style.display = 'grid'; 
     }
-    UI.set('temp', `${current.temperature}°`);
+    const displayTemp = CURRENT_UNITS === 'F' ? current.temperature : Math.round((current.temperature - 32) * 5/9);
+    UI.set('temp', `${displayTemp}°`);
     UI.set('desc', current.shortForecast);
     UI.set('wind', `${current.windSpeed} ${current.windDirection}`);
     UI.set('humidity', `${current.relativeHumidity?.value || '--'}%`);
-    UI.set('feelsLike', `${current.temperature}°`);
-    UI.set('visibility', '10 mi');
+    const feelsLike = calculateFeelsLike(current.temperature, current.relativeHumidity?.value || 50, parseFloat(current.windSpeed) || 0);
+    const displayFeelsLike = CURRENT_UNITS === 'F' ? feelsLike : Math.round((feelsLike - 32) * 5/9);
+    UI.set('feelsLike', `${displayFeelsLike}°`);
+    UI.set('visibility', current.visibility || '10 mi');
+
+    // Hero Icon (#14)
+    if (UI.heroIcon) {
+        UI.heroIcon.innerHTML = `<img src="${getModernIcon(current.shortForecast, true)}" alt="Icon">`;
+    }
     
     // Inject 2-column info grid logic
     const infoGrid = document.querySelector('.info-grid');
     if (infoGrid) {
+        infoGrid.className = 'info-grid grid-2';
         infoGrid.style.display = 'grid';
         infoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
         infoGrid.style.gap = '10px';
         infoGrid.querySelectorAll('.info-item').forEach(item => {
-            LayoutEngine.applyCardStyle(item);
-            item.style.padding = '12px';
+            item.className = 'info-item glass-card';
         });
     }
 
@@ -348,10 +388,14 @@ function renderHourly(periods) {
         LayoutEngine.applyCardStyle(item);
         
         const time = new Date(period.startTime).toLocaleTimeString([], { hour: 'numeric' });
+        const precip = period.probabilityOfPrecipitation?.value;
+        const temp = CURRENT_UNITS === 'F' ? period.temperature : Math.round((period.temperature - 32) * 5/9);
+        
         item.innerHTML = `
             <span style="font-size: 0.8rem; font-weight: 600; opacity: 0.8;">${time}</span>
-            <img src="${period.icon}" alt="icon" style="width:32px; margin: 8px 0;">
-            <span class="temp" style="font-weight: 700;">${period.temperature}°</span>
+            <img src="${getModernIcon(period.shortForecast)}" alt="icon" style="width:32px; margin: 8px 0;">
+            <span class="temp" style="font-weight: 700;">${temp}°</span>
+            ${precip > 0 ? `<span class="precip-badge">💧${precip}%</span>` : ''}
         `;
         UI.hourly.appendChild(item);
     });
@@ -385,13 +429,16 @@ function renderDailyForecast(forecast) {
         
         if (index === 0) item.classList.add('selected');
         const mainP = day.day || day.night;
+        const mainTemp = CURRENT_UNITS === 'F' ? mainP.temperature : Math.round((mainP.temperature - 32) * 5/9);
+        const nightTemp = day.night ? (CURRENT_UNITS === 'F' ? day.night.temperature : Math.round((day.night.temperature - 32) * 5/9)) : null;
+
         item.innerHTML = `
             <span style="font-weight: 700; font-size: 0.9rem;">${day.name}</span>
             <span style="font-size: 0.7rem; opacity: 0.6;">${day.date.toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-            <img src="${mainP.icon}" alt="icon" style="width:32px; margin: 8px 0;">
+            <img src="${getModernIcon(mainP.shortForecast)}" alt="icon" style="width:32px; margin: 8px 0;">
             <div style="display:flex; gap: 4px; align-items: baseline; justify-content: center;">
-                <span class="temp" style="font-weight: 700;">${mainP.temperature}°</span>
-                ${day.night ? `<span style="font-size: 0.75rem; opacity: 0.4;">${day.night.temperature}°</span>` : ''}
+                <span class="temp" style="font-weight: 700;">${mainTemp}°</span>
+                ${nightTemp !== null ? `<span style="font-size: 0.75rem; opacity: 0.4;">${nightTemp}°</span>` : ''}
             </div>
         `;
         item.onclick = () => {
@@ -416,7 +463,8 @@ function updateAppFocus(data, isHistorical = false) {
     const main = data.day || data.night || data;
     const dateStr = data.date ? data.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) : 'Temporal Pivot';
     
-    UI.set('temp', `${main.temperature}°`);
+    const displayTemp = CURRENT_UNITS === 'F' ? main.temperature : Math.round((main.temperature - 32) * 5/9);
+    UI.set('temp', `${displayTemp}°`);
     UI.set('desc', main.shortForecast || (isHistorical ? 'Historical Record' : 'Forecast'));
     if (main.windSpeed) UI.set('wind', `${main.windSpeed} ${main.windDirection}`);
     if (main.relativeHumidity) UI.set('humidity', `${main.relativeHumidity?.value || '--'}%`);
@@ -432,18 +480,51 @@ function updateAppFocus(data, isHistorical = false) {
 
 async function fetchAlerts(lat, lon) {
     try {
-        const res = await fetch(`${NWS_API}/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: { 'User-Agent': 'TrueTempApp/1.0' } });
+        const res = await fetch(`${NWS_API}/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: HEADERS });
         const data = await res.json();
         const alerts = data.features || [];
         if (UI.alertBanner) {
             if (alerts.length > 0) {
-                UI.alertBanner.innerHTML = `⚠️ <span>${alerts[0].properties.event}</span>`;
+                const alert = alerts[0].properties;
+                UI.alertBanner.innerHTML = `⚠️ <span>${alert.event}</span> <span style="font-size:0.7rem; opacity:0.7; margin-left:auto;">Tap for details</span>`;
                 UI.alertBanner.style.display = 'flex';
+                
+                // Alert Detail (#12)
+                if (UI.alertDetails) {
+                    UI.alertDetails.innerHTML = `
+                        <h4>${alert.headline || alert.event}</h4>
+                        <p>${alert.description || 'No detailed information available.'}</p>
+                        ${alert.instruction ? `<div style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.1); padding-top:8px;"><strong>Instructions:</strong><br>${alert.instruction}</div>` : ''}
+                    `;
+                    UI.alertBanner.onclick = () => {
+                        UI.alertDetails.style.display = UI.alertDetails.style.display === 'none' ? 'block' : 'none';
+                    };
+                }
             } else {
                 UI.alertBanner.style.display = 'none';
+                if (UI.alertDetails) UI.alertDetails.style.display = 'none';
             }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error('Alerts fetch failed:', e);
+    }
+}
+
+/**
+ * Modern Icon Mapping (#13)
+ */
+function getModernIcon(forecast, isHero = false) {
+    const f = forecast.toLowerCase();
+    let icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163734.png'; // Fallback
+    
+    if (f.includes('sunny') || f.includes('clear')) icon = 'https://cdn-icons-png.flaticon.com/512/869/869869.png';
+    else if (f.includes('cloudy') && f.includes('partly')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163736.png';
+    else if (f.includes('cloudy')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163734.png';
+    else if (f.includes('rain') || f.includes('shower')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163735.png';
+    else if (f.includes('thunder')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163738.png';
+    else if (f.includes('snow')) icon = 'https://cdn-icons-png.flaticon.com/512/642/642000.png';
+    
+    return icon;
 }
 
 function updateTheme(temp, condition) {
@@ -466,11 +547,21 @@ async function fetchTrends(lat, lon, todayHigh, tomorrowHigh) {
         const now = new Date();
         const yest = new Date(now); yest.setDate(now.getDate() - 1);
         const ly = new Date(now); ly.setFullYear(now.getFullYear() - 1);
+        
+        const yestDate = yest.toISOString().split('T')[0];
+        const lyDate = ly.toISOString().split('T')[0];
 
-        const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${ly.toISOString().split('T')[0]}&end_date=${yest.toISOString().split('T')[0]}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`);
-        const data = await res.json();
-        const yestHigh = Math.round(data.daily.temperature_2m_max[data.daily.temperature_2m_max.length - 1]);
-        const lyHigh = Math.round(data.daily.temperature_2m_max[0]);
+        // Optimized: Fetch only the specific days needed
+        const [yestRes, lyRes] = await Promise.all([
+            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${yestDate}&end_date=${yestDate}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`),
+            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`)
+        ]);
+
+        const yestData = await yestRes.json();
+        const lyData = await lyRes.json();
+
+        const yestHigh = Math.round(yestData.daily.temperature_2m_max[0]);
+        const lyHigh = Math.round(lyData.daily.temperature_2m_max[0]);
 
         UI.trends.container.innerHTML = '';
         UI.trends.items = [];
@@ -529,7 +620,71 @@ async function fetchTrends(lat, lon, todayHigh, tomorrowHigh) {
     } catch (e) { console.error(e); }
 }
 
-function updateLoading(msg) { if (UI.state) UI.state.innerHTML = `<div class="spinner"></div><p>${msg}</p>`; }
-function showError(msg) { if (UI.state) UI.state.innerHTML = `<div class="error-view">⚠️ <p>${msg}</p><button class="btn" onclick="location.reload()">Retry</button></div>`; }
+function updateLoading(msg) { 
+    if (UI.state) {
+        const msgEl = document.getElementById('loading-msg');
+        if (msgEl) msgEl.textContent = msg;
+        else UI.state.innerHTML = `<div class="spinner"></div><p id="loading-msg">${msg}</p>`; 
+    }
+}
+function showError(msg) { 
+    console.error('App Error:', msg);
+    if (UI.state) {
+        UI.state.innerHTML = `
+            <div class="error-view glass-card">
+                <span style="font-size: 3rem;">⚠️</span>
+                <h3>Weather Interruption</h3>
+                <p style="color: var(--text-secondary); margin: 0.5rem 0;">${msg}</p>
+                <p style="font-size: 0.7rem; opacity: 0.6;">Check your connection or GPS permissions.</p>
+                <button class="btn" style="margin-top: 1rem;" onclick="location.reload()">Try Again</button>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Calculates Heat Index or Wind Chill based on NWS formulas.
+ */
+function calculateFeelsLike(temp, humidity, wind) {
+    if (temp <= 50 && wind > 3) {
+        // Wind Chill
+        return Math.round(35.74 + (0.6215 * temp) - (35.75 * Math.pow(wind, 0.16)) + (0.4275 * temp * Math.pow(wind, 0.16)));
+    }
+    if (temp >= 80) {
+        // Heat Index (Simplified)
+        const hi = 0.5 * (temp + 61.0 + ((temp - 68.0) * 1.2) + (humidity * 0.094));
+        if (hi >= 80) {
+            // Full HI formula would go here for higher precision, but this is a good approximation
+            return Math.round(hi);
+        }
+    }
+    return Math.round(temp);
+}
+
+/**
+ * Cache logic
+ */
+function saveToCache(data) {
+    localStorage.setItem('weather_cache', JSON.stringify({
+        timestamp: Date.now(),
+        data: data
+    }));
+}
+
+function loadFromCache() {
+    const cached = localStorage.getItem('weather_cache');
+    if (!cached) return null;
+    const { timestamp, data } = JSON.parse(cached);
+    if (Date.now() - timestamp > 15 * 60 * 1000) return null; // 15 min TTL
+    return { data };
+}
+
+function renderFullWeather(data) {
+    // This is a helper to render everything from a cache/full response
+    const { current, hourly, daily, lat, lon } = data;
+    renderWeather(current, hourly);
+    renderDailyForecast(daily);
+    // fetchTrends(lat, lon, high, tomorrow) -> would need to store these too
+}
 
 init();

@@ -16,11 +16,20 @@
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="bg-blob"></div>
-    
     <main id="app">
+        <header class="app-controls">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search City or ZIP...">
+                <button id="search-btn">🔍</button>
+            </div>
+            <div class="unit-toggle">
+                <button id="toggle-units" class="clickable">°F</button>
+            </div>
+        </header>
+
         <!-- Smart Alert Banner (Hidden by default) -->
         <div id="alert-banner" class="alert-banner" style="display: none;"></div>
+        <div id="alert-details" class="alert-details glass-card" style="display: none;"></div>
 
         <button id="return-today" class="clickable" style="display: none; position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 1000; padding: 8px 16px; border-radius: 20px; font-weight: 600; cursor: pointer; align-items: center; gap: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); color: white; border: 1px solid var(--accent); background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); width: auto; font-size: 0.8rem;">
             <span style="font-size: 1rem;">↺</span> Back to Today
@@ -29,7 +38,7 @@
         <!-- Initial State: Loading or Request Permission -->
         <div id="ui-state" class="loading">
             <div class="spinner"></div>
-            <p>Gathering local atmospheric data...</p>
+            <p id="loading-msg">Gathering local atmospheric data...</p>
         </div>
 
         <!-- Weather Content (Hidden initially) -->
@@ -40,14 +49,18 @@
                     <span>Detecting Location...</span>
                 </div>
                 <div id="station-info" style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 8px; font-family: monospace; letter-spacing: 0.5px;">--</div>
+                <div class="hero-main">
+                    <div id="hero-icon-container" class="hero-icon"></div>
+                    <div class="temperature" id="current-temp">--°</div>
+                </div>
                 <div class="current-date" id="current-date">--</div>
                 <div class="last-updated" id="last-updated">Updating...</div>
-                <div class="temperature" id="current-temp">--°</div>
                 <div id="high-low-row" style="font-weight: 600; color: var(--text-secondary); margin-top: -0.5rem; display: flex; gap: 1rem; justify-content: center;">
                     <span>High: <span id="today-high">--°</span></span>
                     <span>Low: <span id="today-low">--°</span></span>
                 </div>
                 <div class="condition" id="weather-desc">Cloudy</div>
+                <a id="radar-link" href="#" target="_blank" class="radar-link">View Local Radar 📡</a>
             </header>
 
             <!-- Trends Section -->

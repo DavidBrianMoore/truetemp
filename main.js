@@ -86,14 +86,13 @@ class LayoutEngine {
 
     static applyScrollSafeZone(container) {
         if (!container) return;
-        container.style.paddingTop = '12px';
-        container.style.paddingBottom = '16px';
-        container.style.marginTop = '-12px';
+        container.style.paddingLeft = '16px';
+        container.style.paddingRight = '16px';
         container.style.width = '100%';
-        container.style.maxWidth = '100%';
+        container.style.maxWidth = '100vw';
         container.style.display = 'flex';
         container.style.gap = '1rem';
-        container.style.overflowX = 'auto';
+        container.style.overflowX = 'scroll';
         container.style.overflowY = 'hidden';
         container.style.scrollbarWidth = 'none';
         container.style.webkitOverflowScrolling = 'touch';
@@ -102,6 +101,7 @@ class LayoutEngine {
         container.style.flexShrink = '1';
         container.style.minWidth = '0';
         container.style.contain = 'layout';
+        container.style.scrollPadding = '1rem';
         
         // Ensure child items don't stretch the scroller beyond reason
         [...container.children].forEach(child => {

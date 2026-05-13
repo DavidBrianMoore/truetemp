@@ -151,6 +151,13 @@ async function init() {
         });
     }
 
+    // 1. Try to load from cache first (Speed #1)
+    const cached = loadFromCache();
+    if (cached) {
+        renderFullWeather(cached.data);
+        console.log('Loaded from cache');
+    }
+
     const params = new URLSearchParams(window.location.search);
     
     try {
@@ -173,13 +180,6 @@ async function init() {
                 LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);
             }
         });
-
-        // Try to load from cache first
-        const cached = loadFromCache();
-        if (cached) {
-            renderFullWeather(cached.data);
-            console.log('Loaded from cache');
-        }
 
         // Auto-refresh every 15 minutes
         setInterval(() => {
@@ -208,9 +208,9 @@ async function fetchWeatherData(lat, lon) {
         return;
     }
     try {
-        updateLoading('Fetching local grid data...');
-        const t = Date.now();
+        updateLoading('Locating atmospheric grid...');
         
+        // 1. Fetch Points (Location Info & URLs) - CRITICAL PATH
         const pointsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`, {
             headers: HEADERS,
             cache: 'reload'
@@ -222,114 +222,106 @@ async function fetchWeatherData(lat, lon) {
         const { forecast, forecastHourly, relativeLocation, radarStation } = pointsData.properties;
         const { city, state } = relativeLocation.properties;
 
-        // Radar Link (#10)
+        // Update Location UI Immediately
+        UI.city.textContent = `${city}, ${state}`;
+        UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
+        UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+        
         if (UI.radarLink && radarStation) {
             UI.radarLink.href = `https://radar.weather.gov/station/${radarStation}/standard`;
         }
 
-        // Secure text setting
-        UI.city.textContent = `${city}, ${state}`;
-        UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
-        UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
-
-        updateLoading('Analyzing atmospheric conditions...');
-        const [hourlyRes, dailyRes, stationsRes] = await Promise.all([
-            fetch(forecastHourly, { headers: HEADERS, cache: 'reload' }),
-            fetch(forecast, { headers: HEADERS, cache: 'reload' }),
-            fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { 
-                headers: HEADERS, 
-                cache: 'reload' 
-            })
-        ]);
-
-        if (!hourlyRes.ok || !dailyRes.ok) throw new Error('Forecast unavailable.');
-
+        // 2. Fetch Hourly Data (Fastest Temp) - CRITICAL PATH
+        updateLoading('Loading current temperature...');
+        const hourlyRes = await fetch(forecastHourly, { headers: HEADERS, cache: 'reload' });
+        if (!hourlyRes.ok) throw new Error('Hourly forecast unavailable.');
+        
         const hourlyData = await hourlyRes.json();
-        const dailyData = await dailyRes.json();
+        ALL_HOURLY_DATA = hourlyData.properties.periods || [];
         
-        let currentTemp = hourlyData.properties.periods[0].temperature;
-        
-        try {
-            if (stationsRes.ok) {
-                const stationsData = await stationsRes.json();
-                const stationId = stationsData.features[0]?.properties?.stationIdentifier;
-                
-                // Secure station info setting
-                const cityContainer = document.getElementById('city-name');
-                if (cityContainer) {
-                    const span = cityContainer.querySelector('span');
-                    if (span) span.textContent = `${city}, ${state}`;
-                    const coordsDiv = cityContainer.querySelector('div') || document.createElement('div');
-                    coordsDiv.style.cssText = 'font-size:0.6rem; opacity:0.6; font-family:monospace; margin-top:2px;';
-                    coordsDiv.textContent = `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
-                    if (!coordsDiv.parentElement) cityContainer.appendChild(coordsDiv);
-                }
+        if (ALL_HOURLY_DATA.length > 0) {
+            const currentPeriod = ALL_HOURLY_DATA[0];
+            INITIAL_STATE = currentPeriod;
+            renderWeather(currentPeriod, ALL_HOURLY_DATA);
+            updateTheme(currentPeriod.temperature, currentPeriod.shortForecast);
+        }
 
-                const stationEl = document.getElementById('station-info');
-                if (stationEl) stationEl.textContent = `NWS Station: ${stationId}`;
-                
-                if (stationId) {
-                    const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest`, {
-                        headers: HEADERS,
-                        cache: 'reload'
+        // 3. Background Parallel Fetches (Non-Blocking)
+        const backgroundTasks = async () => {
+            try {
+                // Fetch Daily Forecast
+                const dailyRes = await fetch(forecast, { headers: HEADERS, cache: 'reload' });
+                if (dailyRes.ok) {
+                    const dailyData = await dailyRes.json();
+                    const dailyPeriods = dailyData.properties.periods || [];
+                    
+                    // Scan first 3 periods for true High/Low
+                    const relevant = dailyPeriods.slice(0, 3);
+                    const temps = relevant.map(p => p.temperature);
+                    const high = Math.max(...temps);
+                    const low = Math.min(...temps);
+                    
+                    const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
+                    const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
+                    UI.set('high', `${displayHigh}°`);
+                    UI.set('low', `${displayLow}°`);
+                    renderDailyForecast(dailyPeriods);
+
+                    // Fetch Trends after daily is ready
+                    const tomorrowPeriod = dailyPeriods.find(p => p.isDaytime && !p.name.includes('Today') && !p.name.includes('This Afternoon'));
+                    const tomorrowTemp = tomorrowPeriod ? tomorrowPeriod.temperature : dailyPeriods[1]?.temperature;
+                    if (tomorrowTemp !== undefined) {
+                        fetchTrends(lat, lon, high, tomorrowTemp);
+                    }
+
+                    // Save to cache with full data
+                    saveToCache({
+                        current: ALL_HOURLY_DATA[0],
+                        hourly: ALL_HOURLY_DATA,
+                        daily: dailyPeriods,
+                        lat, lon
                     });
-                    if (obsRes.ok) {
-                        const obsData = await obsRes.json();
-                        const celsius = obsData.properties.temperature.value;
-                        if (celsius !== null) {
-                            currentTemp = Math.round((celsius * 9/5) + 32);
-                        }
-                        // Real Visibility
-                        const visMeters = obsData.properties.visibility.value;
-                        if (visMeters !== null) {
-                            const visMiles = (visMeters / 1609.34).toFixed(1);
-                            hourlyData.properties.periods[0].visibility = `${visMiles} mi`;
+                }
+            } catch (e) { console.error('Daily forecast update failed:', e); }
+
+            try {
+                // Fetch Stations & Observation Refinement
+                const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { 
+                    headers: HEADERS, 
+                    cache: 'reload' 
+                });
+                
+                if (stationsRes.ok) {
+                    const stationsData = await stationsRes.json();
+                    const stationId = stationsData.features[0]?.properties?.stationIdentifier;
+                    if (stationId) {
+                        const stationEl = document.getElementById('station-info');
+                        if (stationEl) stationEl.textContent = `NWS Station: ${stationId}`;
+
+                        const obsRes = await fetch(`${NWS_API}/stations/${stationId}/observations/latest`, {
+                            headers: HEADERS,
+                            cache: 'reload'
+                        });
+                        
+                        if (obsRes.ok) {
+                            const obsData = await obsRes.json();
+                            const celsius = obsData.properties.temperature.value;
+                            if (celsius !== null) {
+                                const currentTemp = Math.round((celsius * 9/5) + 32);
+                                // Update temp if it changed significantly
+                                const displayTemp = CURRENT_UNITS === 'F' ? currentTemp : Math.round((currentTemp - 32) * 5/9);
+                                UI.set('temp', `${displayTemp}°`);
+                                updateTheme(currentTemp, ALL_HOURLY_DATA[0].shortForecast);
+                            }
                         }
                     }
                 }
-            }
-        } catch (e) {
-            console.error('Observation station fetch failed:', e);
-        }
+            } catch (e) { console.error('Observation refinement failed:', e); }
 
-        ALL_HOURLY_DATA = hourlyData.properties.periods || [];
+            fetchAlerts(lat, lon);
+        };
 
-        if (ALL_HOURLY_DATA.length > 0) {
-            const currentPeriod = { ...ALL_HOURLY_DATA[0], temperature: currentTemp };
-            INITIAL_STATE = currentPeriod;
-            renderWeather(currentPeriod, ALL_HOURLY_DATA);
-            updateTheme(currentTemp, currentPeriod.shortForecast);
-        }
-        
-        let dailyPeriods = [];
-        if (dailyData.properties.periods) {
-            dailyPeriods = dailyData.properties.periods;
-            // Scan first 3 periods to find the true High and Low for the current 24h window
-            const relevant = dailyPeriods.slice(0, 3);
-            const temps = relevant.map(p => p.temperature);
-            const high = Math.max(...temps);
-            const low = Math.min(...temps);
-            
-            const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
-            const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
-            UI.set('high', `${displayHigh}°`);
-            UI.set('low', `${displayLow}°`);
-            renderDailyForecast(dailyPeriods);
-
-            // Correctly find tomorrow's high (first daytime period after today's day/night)
-            const tomorrowPeriod = dailyPeriods.find(p => p.isDaytime && !p.name.includes('Today') && !p.name.includes('This Afternoon'));
-            const tomorrowTemp = tomorrowPeriod ? tomorrowPeriod.temperature : dailyPeriods[1].temperature;
-            fetchTrends(lat, lon, high, tomorrowTemp);
-        }
-
-        saveToCache({
-            current: { ...ALL_HOURLY_DATA[0], temperature: currentTemp },
-            hourly: ALL_HOURLY_DATA,
-            daily: dailyPeriods,
-            lat, lon
-        });
-
-        fetchAlerts(lat, lon);
+        backgroundTasks(); // Run in background
         
     } catch (error) {
         showError(error.message);

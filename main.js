@@ -314,6 +314,28 @@ async function fetchWeatherData(lat, lon) {
                                 updateTheme(currentTemp, ALL_HOURLY_DATA[0].shortForecast);
                             }
                         }
+
+                        // True High/Low Refinement
+                        try {
+                            const observedStats = await fetchTrueHighLow(stationId);
+                            if (observedStats) {
+                                const currentHighText = UI.high.textContent.replace('°', '');
+                                const currentLowText = UI.low.textContent.replace('°', '');
+                                
+                                let finalHigh = parseInt(currentHighText);
+                                let finalLow = parseInt(currentLowText);
+
+                                // Convert observed to current units
+                                const obsHigh = CURRENT_UNITS === 'F' ? observedStats.high : Math.round((observedStats.high - 32) * 5/9);
+                                const obsLow = CURRENT_UNITS === 'F' ? observedStats.low : Math.round((observedStats.low - 32) * 5/9);
+
+                                if (!isNaN(obsHigh)) finalHigh = Math.max(finalHigh, obsHigh);
+                                if (!isNaN(obsLow)) finalLow = Math.min(finalLow, obsLow);
+
+                                UI.set('high', `${finalHigh}°`);
+                                UI.set('low', `${finalLow}°`);
+                            }
+                        } catch (e) { console.error('True High/Low refinement failed:', e); }
                     }
                 }
             } catch (e) { console.error('Observation refinement failed:', e); }
@@ -467,6 +489,42 @@ function updateAppFocus(data, isHistorical = false) {
     if (resetBtn) {
         const isInitial = INITIAL_STATE && main.temperature === INITIAL_STATE.temperature && main.shortForecast === INITIAL_STATE.shortForecast;
         resetBtn.style.display = isInitial ? 'none' : 'flex';
+    }
+}
+
+async function fetchTrueHighLow(stationId) {
+    try {
+        const res = await fetch(`${NWS_API}/stations/${stationId}/observations`, { headers: HEADERS });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const observations = data.features || [];
+        
+        const now = new Date();
+        const todayStr = now.toDateString();
+        
+        let high = -Infinity;
+        let low = Infinity;
+        let found = false;
+
+        observations.forEach(obs => {
+            const date = new Date(obs.properties.timestamp);
+            // Only look at observations from today (local time)
+            if (date.toDateString() === todayStr) {
+                const celsius = obs.properties.temperature.value;
+                if (celsius !== null) {
+                    const fahrenheit = (celsius * 9/5) + 32;
+                    if (fahrenheit > high) high = fahrenheit;
+                    if (fahrenheit < low) low = fahrenheit;
+                    found = true;
+                }
+            }
+        });
+
+        if (!found) return null;
+        return { high: Math.round(high), low: Math.round(low) };
+    } catch (e) {
+        console.error('fetchTrueHighLow failed:', e);
+        return null;
     }
 }
 

@@ -87,6 +87,7 @@ class LayoutEngine {
 }
 
 let ALL_HOURLY_DATA = [];
+let ALL_DAILY_DATA = [];
 let INITIAL_STATE = null;
 let CURRENT_LAT = null;
 let CURRENT_LON = null;
@@ -287,6 +288,7 @@ async function fetchWeatherData(lat, lon) {
                 if (dailyRes.ok) {
                     const dailyData = await dailyRes.json();
                     const dailyPeriods = dailyData.properties.periods || [];
+                    ALL_DAILY_DATA = dailyPeriods;
                     
                     // Scan first 3 periods for true High/Low
                     const relevant = dailyPeriods.slice(0, 3);
@@ -511,6 +513,10 @@ function renderDailyForecast(forecast) {
         item.onclick = () => {
             document.querySelectorAll('.forecast-item').forEach(i => i.classList.remove('selected'));
             item.classList.add('selected');
+            
+            const displayHigh = CURRENT_UNITS === 'F' ? mainP.temperature : Math.round((mainP.temperature - 32) * 5/9);
+            const displayLow = nightTemp !== null ? nightTemp : displayHigh;
+            
             updateAppFocus(day);
         };
         LayoutEngine.applyCardStyle(item);
@@ -528,7 +534,8 @@ function updateAppFocus(data, isHistorical = false) {
     
     // Check if it's a daily group object or a flat period object
     const main = data.day || data.night || data;
-    const dateStr = data.date ? data.date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) : 'Temporal Pivot';
+    const baseDate = data.date || (main.startTime ? new Date(main.startTime) : new Date());
+    const dateStr = baseDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
     
     const displayTemp = CURRENT_UNITS === 'F' ? main.temperature : Math.round((main.temperature - 32) * 5/9);
     UI.set('temp', `${displayTemp}°`);
@@ -536,6 +543,48 @@ function updateAppFocus(data, isHistorical = false) {
     if (main.windSpeed) UI.set('wind', `${main.windSpeed} ${main.windDirection}`);
     if (main.relativeHumidity) UI.set('humidity', `${main.relativeHumidity?.value || '--'}%`);
     UI.set('date', dateStr);
+
+    // Update Trends relative to this day
+    if (!isHistorical && ALL_DAILY_DATA.length > 0) {
+        const dayDateStr = baseDate.toDateString();
+        const periods = ALL_DAILY_DATA.filter(p => new Date(p.startTime).toDateString() === dayDateStr);
+        
+        let high, low;
+        if (periods.length > 0) {
+            const temps = periods.map(p => p.temperature);
+            high = Math.max(...temps);
+            low = Math.min(...temps);
+        } else {
+            // If not found in daily (e.g. today from hourly), use today high/low from UI or estimate
+            high = main.temperature;
+            low = main.temperature;
+            // Attempt to get from UI high/low if it's today
+            if (dayDateStr === new Date().toDateString()) {
+                const uiHigh = parseInt(UI.high.textContent);
+                const uiLow = parseInt(UI.low.textContent);
+                if (!isNaN(uiHigh)) high = CURRENT_UNITS === 'F' ? uiHigh : Math.round(uiHigh * 1.8 + 32);
+                if (!isNaN(uiLow)) low = CURRENT_UNITS === 'F' ? uiLow : Math.round(uiLow * 1.8 + 32);
+            }
+        }
+
+        // Find high/low for the "relative tomorrow"
+        const nextDate = new Date(baseDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+        const nextDateStr = nextDate.toDateString();
+        const nextPeriods = ALL_DAILY_DATA.filter(p => new Date(p.startTime).toDateString() === nextDateStr);
+        
+        let tomHigh, tomLow;
+        if (nextPeriods.length > 0) {
+            const tomTemps = nextPeriods.map(p => p.temperature);
+            tomHigh = Math.max(...tomTemps);
+            tomLow = Math.min(...tomTemps);
+        } else {
+            tomHigh = high; 
+            tomLow = low;
+        }
+
+        fetchTrends(CURRENT_LAT, CURRENT_LON, high, low, tomHigh, tomLow, baseDate);
+    }
     
     // Show "Return to Today" button if not returning to initial state
     const resetBtn = document.getElementById('return-today');
@@ -658,13 +707,12 @@ function updateTheme(temp, condition) {
     THEME.accent = accent;
 }
 
-async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrowLow) {
+async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrowLow, baseDate = new Date()) {
     if (!UI.trends.container) return;
     const cacheBust = Date.now();
     try {
-        const now = new Date();
-        const yest = new Date(now); yest.setDate(now.getDate() - 1);
-        const ly = new Date(now); ly.setFullYear(now.getFullYear() - 1);
+        const yest = new Date(baseDate); yest.setDate(baseDate.getDate() - 1);
+        const ly = new Date(baseDate); ly.setFullYear(baseDate.getFullYear() - 1);
         
         const yestDate = yest.toISOString().split('T')[0];
         const lyDate = ly.toISOString().split('T')[0];
@@ -686,10 +734,16 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
         UI.trends.container.innerHTML = '';
         UI.trends.items = [];
 
+        // Labels relative to baseDate
+        const isToday = baseDate.toDateString() === new Date().toDateString();
+        const yestLabel = isToday ? 'Yesterday' : 'Day Before';
+        const lyLabel = `In ${ly.getFullYear()}`;
+        const tomLabel = isToday ? 'Tomorrow' : 'Day After';
+
         const trendData = [
-            { label: `Yesterday (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true },
-            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, low: lyLow, diff: lyHigh - todayHigh, isReverse: true },
-            { label: 'Tomorrow', high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true }
+            { label: `${yestLabel} (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true },
+            { label: `${lyLabel} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, low: lyLow, diff: lyHigh - todayHigh, isReverse: true },
+            { label: `${tomLabel} (${new Date(baseDate.getTime() + 86400000).toLocaleDateString([], {month:'short', day:'numeric'})})`, high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true }
         ];
 
         const toDisplay = (f) => CURRENT_UNITS === 'F' ? f : Math.round((f - 32) * 5/9);

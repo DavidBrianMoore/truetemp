@@ -108,6 +108,9 @@ async function init() {
     ata.registerAction('updateTheme', (temp, cond) => updateTheme(temp, cond));
     ata.registerAction('reLayout', () => LayoutEngine.applyGrid(UI.trends.container, UI.trends.items));
 
+    // Debug Exports
+    window._truetemp = { ALL_HOURLY_DATA, ALL_DAILY_DATA, CURRENT_LAT, CURRENT_LON, INITIAL_STATE, UI };
+
     // Unit Toggle Listener — preserve searched location across reload
     UI.unitToggle.addEventListener('click', () => {
         CURRENT_UNITS = CURRENT_UNITS === 'F' ? 'C' : 'F';
@@ -290,6 +293,8 @@ async function fetchWeatherData(lat, lon) {
                     const dailyData = await dailyRes.json();
                     const dailyPeriods = dailyData.properties.periods || [];
                     ALL_DAILY_DATA = dailyPeriods;
+                    window._truetemp.ALL_DAILY_DATA = dailyPeriods;
+                    console.log('ALL_DAILY_DATA loaded:', ALL_DAILY_DATA.length);
                     
                     // Scan first 3 periods for true High/Low
                     const relevant = dailyPeriods.slice(0, 3);
@@ -544,6 +549,8 @@ function updateAppFocus(data, isHistorical = false) {
     if (main.windSpeed) UI.set('wind', `${main.windSpeed} ${main.windDirection}`);
     if (main.relativeHumidity) UI.set('humidity', `${main.relativeHumidity?.value || '--'}%`);
     UI.set('date', dateStr);
+
+    console.log('updateAppFocus:', dateStr, 'Daily Data Count:', ALL_DAILY_DATA.length);
 
     // Update Trends relative to this day
     if (!isHistorical && ALL_DAILY_DATA.length > 0) {

@@ -268,10 +268,24 @@ async function fetchWeatherData(lat, lon) {
                     renderDailyForecast(dailyPeriods);
 
                     // Fetch Trends after daily is ready
-                    const tomorrowPeriod = dailyPeriods.find(p => p.isDaytime && !p.name.includes('Today') && !p.name.includes('This Afternoon'));
-                    const tomorrowTemp = tomorrowPeriod ? tomorrowPeriod.temperature : dailyPeriods[1]?.temperature;
-                    if (tomorrowTemp !== undefined) {
-                        fetchTrends(lat, lon, high, tomorrowTemp);
+                    // Correctly find tomorrow's high and low
+                    const tomorrowDate = new Date();
+                    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+                    const tomorrowDateStr = tomorrowDate.toDateString();
+                    const tomPeriods = dailyPeriods.filter(p => new Date(p.startTime).toDateString() === tomorrowDateStr);
+                    
+                    let tomorrowHigh, tomorrowLow;
+                    if (tomPeriods.length > 0) {
+                        const tomTemps = tomPeriods.map(p => p.temperature);
+                        tomorrowHigh = Math.max(...tomTemps);
+                        tomorrowLow = Math.min(...tomTemps);
+                    } else {
+                        tomorrowHigh = dailyPeriods[2]?.temperature || dailyPeriods[1]?.temperature || 0;
+                        tomorrowLow = tomorrowHigh;
+                    }
+                    
+                    if (tomorrowHigh !== undefined) {
+                        fetchTrends(lat, lon, high, low, tomorrowHigh, tomorrowLow);
                     }
 
                     // Save to cache with full data
@@ -590,7 +604,7 @@ function updateTheme(temp, condition) {
     THEME.accent = accent;
 }
 
-async function fetchTrends(lat, lon, todayHigh, tomorrowHigh) {
+async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrowLow) {
     if (!UI.trends.container) return;
     const cacheBust = Date.now();
     try {
@@ -603,24 +617,29 @@ async function fetchTrends(lat, lon, todayHigh, tomorrowHigh) {
 
         // Optimized: Fetch only the specific days needed
         const [yestRes, lyRes] = await Promise.all([
-            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${yestDate}&end_date=${yestDate}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`),
-            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max&temperature_unit=fahrenheit&cb=${cacheBust}`)
+            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${yestDate}&end_date=${yestDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&cb=${cacheBust}`),
+            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&cb=${cacheBust}`)
         ]);
 
         const yestData = await yestRes.json();
         const lyData = await lyRes.json();
 
         const yestHigh = Math.round(yestData.daily.temperature_2m_max[0]);
+        const yestLow = Math.round(yestData.daily.temperature_2m_min[0]);
         const lyHigh = Math.round(lyData.daily.temperature_2m_max[0]);
+        const lyLow = Math.round(lyData.daily.temperature_2m_min[0]);
 
         UI.trends.container.innerHTML = '';
         UI.trends.items = [];
 
         const trendData = [
-            { label: `Yesterday (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: yestHigh, diff: yestHigh - todayHigh, isReverse: true },
-            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, temp: lyHigh, diff: lyHigh - todayHigh, isReverse: true },
-            { label: 'Tomorrow', temp: tomorrowHigh, diff: tomorrowHigh - todayHigh, isForward: true }
+            { label: `Yesterday (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true },
+            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, low: lyLow, diff: lyHigh - todayHigh, isReverse: true },
+            { label: 'Tomorrow', high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true }
         ];
+
+        const toDisplay = (f) => CURRENT_UNITS === 'F' ? f : Math.round((f - 32) * 5/9);
+        const toDiffDisplay = (fDiff) => CURRENT_UNITS === 'F' ? fDiff : Math.round(fDiff / 1.8);
 
         trendData.forEach(d => {
             const el = document.createElement('div');
@@ -632,22 +651,29 @@ async function fetchTrends(lat, lon, todayHigh, tomorrowHigh) {
             LayoutEngine.applyCardStyle(el);
             
             const diff = d.diff;
+            const diffVal = toDiffDisplay(Math.abs(diff));
             let text = '';
-            if (diff > 0) text = `${diff}° hotter`;
-            else if (diff < 0) text = `${Math.abs(diff)}° cooler`;
+            if (diff > 0) text = `${diffVal}° hotter`;
+            else if (diff < 0) text = `${diffVal}° cooler`;
             else text = 'Same';
 
             const badgeCls = diff > 0 ? 'hotter' : diff < 0 ? 'cooler' : '';
             
+            const displayHigh = toDisplay(d.high);
+            const displayLow = toDisplay(d.low);
+
             el.innerHTML = `
                 <span style="font-size:0.7rem; color:var(--text-secondary); text-align:center; min-height: 2em;">${d.label}</span>
-                <span style="font-size:1.5rem; font-weight:700; margin: 4px 0;">${d.temp}°</span>
+                <div style="display:flex; align-items: baseline; gap: 6px; margin: 4px 0;">
+                    <span style="font-size:1.5rem; font-weight:700;">${displayHigh}°</span>
+                    <span style="font-size:1rem; opacity:0.5; font-weight:400;">${displayLow}°</span>
+                </div>
                 <span class="diff-badge small ${badgeCls}" style="font-size:0.6rem; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,0.1);">${text}</span>
             `;
             
             el.onclick = () => {
                 updateAppFocus({ 
-                    temperature: d.temp, 
+                    temperature: d.high, 
                     shortForecast: d.label.split(' ')[0] + ' Peak'
                 }, !d.isForward);
             };

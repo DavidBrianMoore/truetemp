@@ -97,6 +97,7 @@ const HEADERS = { 'User-Agent': 'TrueTempApp/1.0 (david@truetemp.app)' };
 async function init() {
     // Register ATA State
     ata.registerState('hourlyData', () => ALL_HOURLY_DATA);
+    ata.registerState('dailyData', () => ALL_DAILY_DATA);
     ata.registerState('uiVisible', () => UI.content?.style.display !== 'none');
     ata.registerState('currentCity', () => UI.city?.textContent);
     ata.registerState('currentTemp', () => UI.temp?.textContent);
@@ -584,6 +585,12 @@ function updateAppFocus(data, isHistorical = false) {
         }
 
         fetchTrends(CURRENT_LAT, CURRENT_LON, high, low, tomHigh, tomLow, baseDate);
+
+        // Update UI High/Low display
+        const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
+        const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
+        UI.set('high', `${displayHigh}°`);
+        UI.set('low', `${displayLow}°`);
     }
     
     // Show "Return to Today" button if not returning to initial state
@@ -717,19 +724,28 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
         const yestDate = yest.toISOString().split('T')[0];
         const lyDate = ly.toISOString().split('T')[0];
 
-        // Optimized: Fetch only the specific days needed
-        const [yestRes, lyRes] = await Promise.all([
-            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${yestDate}&end_date=${yestDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&cb=${cacheBust}`),
-            fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&cb=${cacheBust}`)
-        ]);
+        // 1. Get Yesterday Data (Check Forecast first, then Archive)
+        let yestHigh, yestLow;
+        const yestInForecast = ALL_DAILY_DATA.find(p => new Date(p.startTime).toDateString() === yest.toDateString());
+        
+        if (yestInForecast) {
+            // Find all periods for that day to get true high/low
+            const yestPeriods = ALL_DAILY_DATA.filter(p => new Date(p.startTime).toDateString() === yest.toDateString());
+            const yestTemps = yestPeriods.map(p => p.temperature);
+            yestHigh = Math.max(...yestTemps);
+            yestLow = Math.min(...yestTemps);
+        } else {
+            const yestRes = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${yestDate}&end_date=${yestDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&cb=${cacheBust}`);
+            const yestData = await yestRes.json();
+            yestHigh = Math.round(yestData.daily?.temperature_2m_max[0] || 0);
+            yestLow = Math.round(yestData.daily?.temperature_2m_min[0] || 0);
+        }
 
-        const yestData = await yestRes.json();
+        // 2. Get Last Year Data (Archive)
+        const lyRes = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&cb=${cacheBust}`);
         const lyData = await lyRes.json();
-
-        const yestHigh = Math.round(yestData.daily.temperature_2m_max[0]);
-        const yestLow = Math.round(yestData.daily.temperature_2m_min[0]);
-        const lyHigh = Math.round(lyData.daily.temperature_2m_max[0]);
-        const lyLow = Math.round(lyData.daily.temperature_2m_min[0]);
+        const lyHigh = Math.round(lyData.daily?.temperature_2m_max[0] || 0);
+        const lyLow = Math.round(lyData.daily?.temperature_2m_min[0] || 0);
 
         UI.trends.container.innerHTML = '';
         UI.trends.items = [];
@@ -741,9 +757,9 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
         const tomLabel = isToday ? 'Tomorrow' : 'Day After';
 
         const trendData = [
-            { label: `${yestLabel} (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true },
+            { label: `${yestLabel} (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})${yestInForecast ? ' (Est.)' : ''}`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true },
             { label: `${lyLabel} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, low: lyLow, diff: lyHigh - todayHigh, isReverse: true },
-            { label: `${tomLabel} (${new Date(baseDate.getTime() + 86400000).toLocaleDateString([], {month:'short', day:'numeric'})})`, high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true }
+            { label: `${tomLabel} (${new Date(baseDate.getTime() + 86400000).toLocaleDateString([], {month:'short', day:'numeric'})}) (Est.)`, high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true }
         ];
 
         const toDisplay = (f) => CURRENT_UNITS === 'F' ? f : Math.round((f - 32) * 5/9);

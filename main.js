@@ -540,8 +540,10 @@ function updateAppFocus(data, isHistorical = false) {
     
     // Check if it's a daily group object or a flat period object
     const main = data.day || data.night || data;
-    const baseDate = data.date || (main.startTime ? new Date(main.startTime) : new Date());
+    const baseDate = data.date ? new Date(data.date) : (main.startTime ? new Date(main.startTime) : new Date());
     const dateStr = baseDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    
+    window._truetemp.lastBaseDate = baseDate; // Debug
     
     const displayTemp = CURRENT_UNITS === 'F' ? main.temperature : Math.round((main.temperature - 32) * 5/9);
     UI.set('temp', `${displayTemp}°`);
@@ -591,6 +593,7 @@ function updateAppFocus(data, isHistorical = false) {
             tomLow = low;
         }
 
+        console.log(`Trends Update: Base=${dayDateStr} High=${high} Low=${low} Tom=${tomHigh}`);
         fetchTrends(CURRENT_LAT, CURRENT_LON, high, low, tomHigh, tomLow, baseDate);
 
         // Update UI High/Low display
@@ -759,14 +762,14 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
 
         // Labels relative to baseDate
         const isToday = baseDate.toDateString() === new Date().toDateString();
-        const yestLabel = isToday ? 'Yesterday' : 'Day Before';
+        const yestLabel = isToday ? 'Yesterday' : yest.toLocaleDateString([], { weekday: 'long' });
         const lyLabel = `In ${ly.getFullYear()}`;
-        const tomLabel = isToday ? 'Tomorrow' : 'Day After';
+        const tomLabel = isToday ? 'Tomorrow' : new Date(baseDate.getTime() + 86400000).toLocaleDateString([], { weekday: 'long' });
 
         const trendData = [
-            { label: `${yestLabel} (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})${yestInForecast ? ' (Est.)' : ''}`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true },
-            { label: `${lyLabel} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, low: lyLow, diff: lyHigh - todayHigh, isReverse: true },
-            { label: `${tomLabel} (${new Date(baseDate.getTime() + 86400000).toLocaleDateString([], {month:'short', day:'numeric'})}) (Est.)`, high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true }
+            { label: `${yestLabel} (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})${yestInForecast ? ' (Est.)' : ''}`, high: yestHigh, low: yestLow, diff: yestHigh - todayHigh, isReverse: true, date: yest },
+            { label: `${lyLabel} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, low: lyLow, diff: lyHigh - todayHigh, isReverse: true, date: ly },
+            { label: `${tomLabel} (${new Date(baseDate.getTime() + 86400000).toLocaleDateString([], {month:'short', day:'numeric'})}) (Est.)`, high: tomorrowHigh, low: tomorrowLow, diff: tomorrowHigh - todayHigh, isForward: true, date: new Date(baseDate.getTime() + 86400000) }
         ];
 
         const toDisplay = (f) => CURRENT_UNITS === 'F' ? f : Math.round((f - 32) * 5/9);
@@ -805,8 +808,9 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
             el.onclick = () => {
                 updateAppFocus({ 
                     temperature: d.high, 
-                    shortForecast: d.label.split(' ')[0] + ' Peak'
-                }, !d.isForward);
+                    shortForecast: d.label.split(' ')[0] + ' Peak',
+                    date: d.date
+                }, !d.isForward && d.label.includes('In')); // Historical only for "Last Year"
             };
 
             UI.trends.container.appendChild(el);

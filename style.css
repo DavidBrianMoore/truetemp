@@ -105,12 +105,8 @@ body {
     display: none;
 }
 
-.clickable {
-    cursor: pointer;
-    user-select: none;
-}
 
-/* Loading State */
+
 #app {
     width: 100%;
     max-width: 1200px;

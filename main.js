@@ -40,6 +40,8 @@ const UI = {
     },
     high: document.getElementById('today-high'),
     low: document.getElementById('today-low'),
+    precipChance: document.getElementById('precip-chance'),
+    uvIndex: document.getElementById('uv-index'),
     searchInput: document.getElementById('search-input'),
     searchBtn: document.getElementById('search-btn'),
     unitToggle: document.getElementById('toggle-units'),
@@ -86,6 +88,8 @@ class LayoutEngine {
 
 let ALL_HOURLY_DATA = [];
 let INITIAL_STATE = null;
+let CURRENT_LAT = null;
+let CURRENT_LON = null;
 const NWS_API = 'https://api.weather.gov';
 const HEADERS = { 'User-Agent': 'TrueTempApp/1.0 (david@truetemp.app)' };
 
@@ -102,18 +106,24 @@ async function init() {
     ata.registerAction('updateTheme', (temp, cond) => updateTheme(temp, cond));
     ata.registerAction('reLayout', () => LayoutEngine.applyGrid(UI.trends.container, UI.trends.items));
 
-    // Unit Toggle Listener
+    // Unit Toggle Listener — preserve searched location across reload
     UI.unitToggle.addEventListener('click', () => {
         CURRENT_UNITS = CURRENT_UNITS === 'F' ? 'C' : 'F';
         localStorage.setItem('units', CURRENT_UNITS);
-        UI.unitToggle.textContent = `°${CURRENT_UNITS}`;
-        location.reload(); // Simplest way to re-render everything with new units
+        if (CURRENT_LAT !== null) {
+            localStorage.setItem('last_lat', CURRENT_LAT);
+            localStorage.setItem('last_lon', CURRENT_LON);
+        }
+        location.reload();
     });
 
     // Search Listener
     const handleSearch = async () => {
         const query = UI.searchInput.value.trim();
         if (!query) return;
+        const origBtn = UI.searchBtn.textContent;
+        UI.searchBtn.textContent = '⏳';
+        UI.searchBtn.disabled = true;
         try {
             updateLoading(`Searching for ${query}...`);
             const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
@@ -126,6 +136,9 @@ async function init() {
             }
         } catch (e) {
             showError('Search failed.');
+        } finally {
+            UI.searchBtn.textContent = origBtn;
+            UI.searchBtn.disabled = false;
         }
     };
     UI.searchBtn.addEventListener('click', handleSearch);
@@ -164,13 +177,22 @@ async function init() {
         if (params.has('demo')) {
             await fetchWeatherData(33.4484, -112.0740);
         } else {
-            try {
-                const coords = await getPosition();
-                await fetchWeatherData(coords.latitude, coords.longitude);
-            } catch (err) {
-                console.warn('Geolocation failed, using fallback:', err.message);
-                // Fallback to Phoenix, AZ if location is denied
-                await fetchWeatherData(33.4484, -112.0740);
+            // Restore last searched location if unit toggle caused reload
+            const savedLat = parseFloat(localStorage.getItem('last_lat'));
+            const savedLon = parseFloat(localStorage.getItem('last_lon'));
+            localStorage.removeItem('last_lat');
+            localStorage.removeItem('last_lon');
+
+            if (!isNaN(savedLat) && !isNaN(savedLon)) {
+                await fetchWeatherData(savedLat, savedLon);
+            } else {
+                try {
+                    const coords = await getPosition();
+                    await fetchWeatherData(coords.latitude, coords.longitude);
+                } catch (err) {
+                    console.warn('Geolocation failed, using fallback:', err.message);
+                    await fetchWeatherData(33.4484, -112.0740);
+                }
             }
         }
         
@@ -181,10 +203,14 @@ async function init() {
             }
         });
 
-        // Auto-refresh every 15 minutes
+        // Auto-refresh every 15 minutes — always use last known location
         setInterval(() => {
-            getPosition().then(coords => fetchWeatherData(coords.latitude, coords.longitude))
-                .catch(() => fetchWeatherData(33.4484, -112.0740));
+            if (CURRENT_LAT !== null) {
+                fetchWeatherData(CURRENT_LAT, CURRENT_LON);
+            } else {
+                getPosition().then(coords => fetchWeatherData(coords.latitude, coords.longitude))
+                    .catch(() => fetchWeatherData(33.4484, -112.0740));
+            }
         }, 15 * 60 * 1000);
 
     } catch (error) {
@@ -207,6 +233,9 @@ async function fetchWeatherData(lat, lon) {
         showError('Invalid coordinates provided.');
         return;
     }
+    // Persist the last-fetched coordinates
+    CURRENT_LAT = lat;
+    CURRENT_LON = lon;
     try {
         updateLoading('Locating atmospheric grid...');
         
@@ -222,8 +251,12 @@ async function fetchWeatherData(lat, lon) {
         const { forecast, forecastHourly, relativeLocation, radarStation } = pointsData.properties;
         const { city, state } = relativeLocation.properties;
 
-        // Update Location UI Immediately
+        // Update Location UI Immediately — clear stale station info
         UI.city.textContent = `${city}, ${state}`;
+        const stationEl = document.getElementById('station-info');
+        if (stationEl) stationEl.textContent = 'Loading station...';
+        const coordsDiv = document.querySelector('#city-name div');
+        if (coordsDiv) coordsDiv.textContent = `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
         UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
         UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
         
@@ -280,20 +313,22 @@ async function fetchWeatherData(lat, lon) {
                         tomorrowHigh = Math.max(...tomTemps);
                         tomorrowLow = Math.min(...tomTemps);
                     } else {
+                        // Fallback: daytime period = index 2 (high), night = index 3 (low)
                         tomorrowHigh = dailyPeriods[2]?.temperature || dailyPeriods[1]?.temperature || 0;
-                        tomorrowLow = tomorrowHigh;
+                        tomorrowLow = dailyPeriods[3]?.temperature ?? tomorrowHigh;
                     }
                     
                     if (tomorrowHigh !== undefined) {
                         fetchTrends(lat, lon, high, low, tomorrowHigh, tomorrowLow);
                     }
 
-                    // Save to cache with full data
+                    // Save to cache with full data including trend params
                     saveToCache({
                         current: ALL_HOURLY_DATA[0],
                         hourly: ALL_HOURLY_DATA,
                         daily: dailyPeriods,
-                        lat, lon
+                        lat, lon,
+                        trendParams: { high, low, tomorrowHigh, tomorrowLow }
                     });
                 }
             } catch (e) { console.error('Daily forecast update failed:', e); }
@@ -381,18 +416,22 @@ function renderWeather(current, hourly) {
     const displayFeelsLike = CURRENT_UNITS === 'F' ? feelsLike : Math.round((feelsLike - 32) * 5/9);
     UI.set('feelsLike', `${displayFeelsLike}°`);
     UI.set('visibility', current.visibility || '10 mi');
+    const precip = current.probabilityOfPrecipitation?.value;
+    UI.set('precipChance', precip !== null && precip !== undefined ? `${precip}%` : '--%');
+    // UV index is not in the NWS hourly API — show placeholder until we have a source
+    UI.set('uvIndex', '--');
 
     // Hero Icon (#14)
     if (UI.heroIcon) {
         UI.heroIcon.innerHTML = `<img src="${getModernIcon(current.shortForecast, true)}" alt="Icon">`;
     }
     
-    // Inject 2-column info grid logic
+    // Inject 3-column info grid (6 items)
     const infoGrid = document.querySelector('.info-grid');
     if (infoGrid) {
         infoGrid.className = 'info-grid grid-2';
         infoGrid.style.display = 'grid';
-        infoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        infoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
         infoGrid.style.gap = '10px';
         infoGrid.querySelectorAll('.info-item').forEach(item => {
             item.className = 'info-item glass-card';
@@ -575,18 +614,33 @@ async function fetchAlerts(lat, lon) {
 }
 
 /**
- * Modern Icon Mapping (#13)
+ * Modern Icon Mapping — expanded condition set
  */
 function getModernIcon(forecast, isHero = false) {
     const f = forecast.toLowerCase();
-    let icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163734.png'; // Fallback
+    let icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163734.png'; // Default: cloudy
     
-    if (f.includes('sunny') || f.includes('clear')) icon = 'https://cdn-icons-png.flaticon.com/512/869/869869.png';
-    else if (f.includes('cloudy') && f.includes('partly')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163736.png';
-    else if (f.includes('cloudy')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163734.png';
-    else if (f.includes('rain') || f.includes('shower')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163735.png';
-    else if (f.includes('thunder')) icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163738.png';
-    else if (f.includes('snow')) icon = 'https://cdn-icons-png.flaticon.com/512/642/642000.png';
+    if (f.includes('sunny') || f.includes('clear')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/869/869869.png';
+    } else if (f.includes('partly') && (f.includes('cloudy') || f.includes('sunny'))) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163736.png';
+    } else if (f.includes('mostly clear') || f.includes('mostly sunny')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/869/869869.png';
+    } else if (f.includes('fog') || f.includes('haze') || f.includes('mist')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/4005/4005901.png';
+    } else if (f.includes('thunder') || f.includes('storm')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163738.png';
+    } else if (f.includes('rain') || f.includes('shower') || f.includes('drizzle')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163735.png';
+    } else if (f.includes('snow') || f.includes('blizzard') || f.includes('flurr')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/642/642000.png';
+    } else if (f.includes('wintry') || f.includes('sleet') || f.includes('ice') || f.includes('freezing')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/2315/2315377.png';
+    } else if (f.includes('wind') || f.includes('breezy') || f.includes('blustery')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/959/959711.png';
+    } else if (f.includes('cloudy') || f.includes('overcast')) {
+        icon = 'https://cdn-icons-png.flaticon.com/512/1163/1163734.png';
+    }
     
     return icon;
 }
@@ -756,11 +810,16 @@ function loadFromCache() {
 }
 
 function renderFullWeather(data) {
-    // This is a helper to render everything from a cache/full response
-    const { current, hourly, daily, lat, lon } = data;
+    // Render from cache — includes trends if available
+    const { current, hourly, daily, lat, lon, trendParams } = data;
+    if (current) INITIAL_STATE = current;
+    if (lat) { CURRENT_LAT = lat; CURRENT_LON = lon; }
     renderWeather(current, hourly);
     renderDailyForecast(daily);
-    // fetchTrends(lat, lon, high, tomorrow) -> would need to store these too
+    if (trendParams && lat) {
+        const { high, low, tomorrowHigh, tomorrowLow } = trendParams;
+        fetchTrends(lat, lon, high, low, tomorrowHigh, tomorrowLow);
+    }
 }
 
 init();

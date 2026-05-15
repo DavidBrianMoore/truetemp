@@ -43,8 +43,10 @@ const UI = {
     precipChance: document.getElementById('precip-chance'),
     uvIndex: document.getElementById('uv-index'),
     searchInput: document.getElementById('search-input'),
+    searchBox: document.querySelector('.search-box'),
     searchBtn: document.getElementById('search-btn'),
     gpsBtn: document.getElementById('gps-btn'),
+    searchResults: document.getElementById('search-results'),
     unitToggle: document.getElementById('toggle-units'),
     // Safe text setter
     set(key, val) {
@@ -123,32 +125,74 @@ async function init() {
         location.reload();
     });
 
-    // Search Listener
-    const handleSearch = async () => {
+    // Search Logic with Multi-Result Support
+    let searchTimeout = null;
+    
+    const renderSearchResults = (results) => {
+        UI.searchResults.innerHTML = '';
+        if (!results || results.length === 0) {
+            UI.searchResults.style.display = 'none';
+            return;
+        }
+
+        results.forEach(res => {
+            const item = document.createElement('div');
+            item.className = 'result-item';
+            const region = [res.admin1, res.country].filter(Boolean).join(', ');
+            item.innerHTML = `
+                <span class="result-name">${res.name}</span>
+                <span class="result-region">${region}</span>
+            `;
+            item.onclick = () => {
+                UI.searchResults.style.display = 'none';
+                UI.searchInput.value = res.name;
+                fetchWeatherData(res.latitude, res.longitude);
+            };
+            UI.searchResults.appendChild(item);
+        });
+        UI.searchResults.style.display = 'block';
+    };
+
+    const handleSearch = async (isManual = false) => {
         const query = UI.searchInput.value.trim();
-        if (!query) return;
-        const origBtn = UI.searchBtn.textContent;
-        UI.searchBtn.textContent = '⏳';
-        UI.searchBtn.disabled = true;
+        if (query.length < 2) {
+            UI.searchResults.style.display = 'none';
+            return;
+        }
+        
         try {
-            updateLoading(`Searching for ${query}...`);
-            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
+            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=en&format=json`);
             const data = await res.json();
-            if (data.results && data.results.length > 0) {
+            
+            if (isManual && data.results && data.results.length === 1) {
+                // If only one result and user pressed Enter/Click, just load it
                 const { latitude, longitude } = data.results[0];
+                UI.searchResults.style.display = 'none';
                 fetchWeatherData(latitude, longitude);
             } else {
-                showError('Location not found.');
+                renderSearchResults(data.results || []);
             }
         } catch (e) {
-            showError('Search failed.');
-        } finally {
-            UI.searchBtn.textContent = origBtn;
-            UI.searchBtn.disabled = false;
+            console.error('Search fetch failed:', e);
         }
     };
-    UI.searchBtn.addEventListener('click', handleSearch);
-    UI.searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSearch(); });
+
+    UI.searchBtn.addEventListener('click', () => handleSearch(true));
+    UI.searchInput.addEventListener('keypress', (e) => { 
+        if (e.key === 'Enter') handleSearch(true); 
+    });
+
+    UI.searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => handleSearch(false), 300);
+    });
+
+    // Close results when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!UI.searchBox?.contains(e.target) && e.target !== UI.searchInput) {
+            UI.searchResults.style.display = 'none';
+        }
+    });
 
     // GPS Location Listener
     UI.gpsBtn.addEventListener('click', () => {

@@ -19,9 +19,10 @@
     <main id="app">
         <header class="app-controls">
             <div class="search-box">
-                <input type="text" id="search-input" placeholder="Search City or ZIP...">
+                <input type="text" id="search-input" placeholder="Search City or ZIP..." autocomplete="off">
                 <button id="gps-btn" title="Use My Location">📍</button>
                 <button id="search-btn">🔍</button>
+                <div id="search-results" class="search-results glass-card" style="display: none;"></div>
             </div>
             <div class="unit-toggle">
                 <button id="toggle-units" class="clickable">°F</button>

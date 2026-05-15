@@ -171,15 +171,34 @@ async function init() {
         if (!isManual) renderSearchResults(null, true);
         
         try {
-            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=en&format=json`);
+            // Priority 1: Use distance bias if we have current coords
+            let url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=20&language=en&format=json`;
+            if (CURRENT_LAT && CURRENT_LON) {
+                url += `&latitude=${CURRENT_LAT}&longitude=${CURRENT_LON}`;
+            }
+
+            const res = await fetch(url);
             const data = await res.json();
             
-            if (isManual && data.results && data.results.length === 1) {
-                const { latitude, longitude } = data.results[0];
+            let results = data.results || [];
+            
+            // Priority 2: Sort to favor United States results first
+            results.sort((a, b) => {
+                const aIsUS = a.country_code === 'US' ? 1 : 0;
+                const bIsUS = b.country_code === 'US' ? 1 : 0;
+                if (aIsUS !== bIsUS) return bIsUS - aIsUS;
+                return 0; // Maintain API's distance/relevance order within groups
+            });
+
+            // Limit to top 10 after sorting
+            const finalResults = results.slice(0, 10);
+            
+            if (isManual && finalResults.length === 1) {
+                const { latitude, longitude } = finalResults[0];
                 UI.searchResults.style.display = 'none';
                 fetchWeatherData(latitude, longitude);
             } else {
-                renderSearchResults(data.results || []);
+                renderSearchResults(finalResults);
             }
         } catch (e) {
             console.error('Search fetch failed:', e);

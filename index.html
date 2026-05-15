@@ -51,7 +51,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                     <span>Detecting Location...</span>
                 </div>
-                <div id="station-info" style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 8px; font-family: monospace; letter-spacing: 0.5px;">--</div>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                    <div id="station-info" style="font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; letter-spacing: 0.5px;">--</div>
+                    <button id="switch-station-btn" class="clickable" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: var(--accent); font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 700;">Alternative Stations</button>
+                </div>
                 <div class="hero-main">
                     <div id="hero-icon-container" class="hero-icon"></div>
                     <div class="temperature" id="current-temp">--°</div>
@@ -127,6 +130,19 @@
             </section>
         </div>
     </main>
+
+    <!-- Stations Modal -->
+    <div id="stations-modal" class="stations-modal" style="display: none;">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>Nearby Weather Stations</h3>
+                <button id="close-stations" class="clickable">✕</button>
+            </div>
+            <div id="stations-list" class="stations-list">
+                <!-- Stations will be injected here -->
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="/main.js"></script>
 </body>

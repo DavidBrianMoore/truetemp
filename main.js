@@ -44,6 +44,7 @@ const UI = {
     uvIndex: document.getElementById('uv-index'),
     searchInput: document.getElementById('search-input'),
     searchBtn: document.getElementById('search-btn'),
+    gpsBtn: document.getElementById('gps-btn'),
     unitToggle: document.getElementById('toggle-units'),
     // Safe text setter
     set(key, val) {
@@ -148,6 +149,22 @@ async function init() {
     };
     UI.searchBtn.addEventListener('click', handleSearch);
     UI.searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSearch(); });
+
+    // GPS Location Listener
+    UI.gpsBtn.addEventListener('click', () => {
+        UI.gpsBtn.textContent = '⏳';
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                UI.gpsBtn.textContent = '📍';
+                fetchWeatherData(pos.coords.latitude, pos.coords.longitude);
+            },
+            (err) => {
+                UI.gpsBtn.textContent = '📍';
+                showError('Location access denied.');
+            },
+            { timeout: 10000 }
+        );
+    });
 
     // Pull-to-Refresh Logic
     let touchStart = 0;

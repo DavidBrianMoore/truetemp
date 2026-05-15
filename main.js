@@ -128,10 +128,17 @@ async function init() {
     // Search Logic with Multi-Result Support
     let searchTimeout = null;
     
-    const renderSearchResults = (results) => {
+    const renderSearchResults = (results, isLoading = false) => {
+        if (isLoading) {
+            UI.searchResults.innerHTML = '<div class="result-item" style="opacity:0.6; text-align:center;">Searching...</div>';
+            UI.searchResults.style.display = 'block';
+            return;
+        }
+
         UI.searchResults.innerHTML = '';
         if (!results || results.length === 0) {
-            UI.searchResults.style.display = 'none';
+            UI.searchResults.innerHTML = '<div class="result-item" style="opacity:0.6; text-align:center;">No locations found.</div>';
+            UI.searchResults.style.display = 'block';
             return;
         }
 
@@ -143,7 +150,8 @@ async function init() {
                 <span class="result-name">${res.name}</span>
                 <span class="result-region">${region}</span>
             `;
-            item.onclick = () => {
+            item.onclick = (e) => {
+                e.stopPropagation();
                 UI.searchResults.style.display = 'none';
                 UI.searchInput.value = res.name;
                 fetchWeatherData(res.latitude, res.longitude);
@@ -160,12 +168,13 @@ async function init() {
             return;
         }
         
+        if (!isManual) renderSearchResults(null, true);
+        
         try {
             const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=en&format=json`);
             const data = await res.json();
             
             if (isManual && data.results && data.results.length === 1) {
-                // If only one result and user pressed Enter/Click, just load it
                 const { latitude, longitude } = data.results[0];
                 UI.searchResults.style.display = 'none';
                 fetchWeatherData(latitude, longitude);
@@ -174,10 +183,15 @@ async function init() {
             }
         } catch (e) {
             console.error('Search fetch failed:', e);
+            if (isManual) showError('Search failed.');
         }
     };
 
-    UI.searchBtn.addEventListener('click', () => handleSearch(true));
+    UI.searchBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleSearch(true);
+    });
+    
     UI.searchInput.addEventListener('keypress', (e) => { 
         if (e.key === 'Enter') handleSearch(true); 
     });
@@ -187,11 +201,14 @@ async function init() {
         searchTimeout = setTimeout(() => handleSearch(false), 300);
     });
 
+    UI.searchInput.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (UI.searchInput.value.length >= 2) handleSearch(false);
+    });
+
     // Close results when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!UI.searchBox?.contains(e.target) && e.target !== UI.searchInput) {
-            UI.searchResults.style.display = 'none';
-        }
+    document.addEventListener('click', () => {
+        UI.searchResults.style.display = 'none';
     });
 
     // GPS Location Listener

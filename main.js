@@ -1627,25 +1627,21 @@ function renderMapMarkersFromCache() {
                 const color = getTempColor(loc.tempF);
                 
                 let sourceClass = 'src-openmeteo';
-                let sourceLabel = 'O-M';
                 if (loc.source === 'nws') {
                     sourceClass = 'src-nws';
-                    sourceLabel = 'NWS';
                 } else if (loc.source === 'metnorway') {
                     sourceClass = 'src-metnorway';
-                    sourceLabel = 'MET';
                 }
                 
                 const tempIcon = L.divIcon({
                     className: 'custom-temp-icon',
                     html: `
                         <div class="temp-marker-badge ${sourceClass}" style="background: ${color};">
-                            <span class="temp-val">${displayTemp}°</span>
-                            <span class="temp-src">${sourceLabel}</span>
+                            ${displayTemp}°
                         </div>
                     `,
-                    iconSize: [44, 44],
-                    iconAnchor: [22, 22]
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
                 });
                 
                 const popupContent = `

@@ -537,49 +537,36 @@ body {
 /* Custom Temp Badge Marker */
 .temp-marker-badge {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     color: #fff;
     font-weight: 700;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.25);
-    border: 2px solid #fff;
+    font-size: 0.8rem;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.25);
+    border: 1.5px solid #fff;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
-    line-height: 1.1;
-}
-
-.temp-marker-badge .temp-val {
-    font-size: 0.85rem;
-    font-weight: 800;
-}
-
-.temp-marker-badge .temp-src {
-    font-size: 0.55rem;
-    font-weight: 700;
-    opacity: 0.95;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    line-height: 1;
 }
 
 /* Source-specific branding & glows */
 .temp-marker-badge.src-nws {
     border-color: #c084fc; /* Purple accent */
-    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.25);
+    box-shadow: 0 3px 8px rgba(168, 85, 247, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.25);
 }
 
 .temp-marker-badge.src-openmeteo {
     border-color: #22d3ee; /* Cyan accent */
-    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.25);
+    box-shadow: 0 3px 8px rgba(6, 182, 212, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.25);
 }
 
 .temp-marker-badge.src-metnorway {
     border-color: #fb923c; /* Orange accent */
-    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.25);
+    box-shadow: 0 3px 8px rgba(249, 115, 22, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.25);
 }
 
 .temp-marker-badge:hover {

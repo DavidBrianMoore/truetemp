@@ -1408,17 +1408,47 @@ async function updateMap(lat, lon, shouldSetView = true) {
 async function preloadSurroundingTelemetry(lat, lon) {
     if (lat === undefined || lon === undefined) return;
 
-    // Surrounding grid offsets for Open-Meteo (5x5 grid = 24 points)
+    // 1. Generate concentric radiating grid points up to 200 miles (~3.0 degrees)
     const points = [];
-    for (let dLat = -2; dLat <= 2; dLat++) {
-        for (let dLon = -2; dLon <= 2; dLon++) {
-            if (dLat === 0 && dLon === 0) continue;
+    
+    // Ring 1: Immediate/Inner local neighborhood (0 to 25 miles, step size 0.08 degrees)
+    for (let x = -2; x <= 2; x++) {
+        for (let y = -2; y <= 2; y++) {
+            if (x === 0 && y === 0) continue;
             points.push({
-                lat: lat + dLat * 0.08,
-                lon: lon + dLon * 0.08
+                lat: lat + x * 0.08,
+                lon: lon + y * 0.08,
+                distance: Math.sqrt(x*x + y*y) * 0.08
             });
         }
     }
+
+    // Ring 2: Mid-range regional grid (25 to 80 miles, step size 0.45 degrees)
+    for (let x = -2; x <= 2; x++) {
+        for (let y = -2; y <= 2; y++) {
+            if (Math.abs(x) <= 1 && Math.abs(y) <= 1) continue; // Skip Ring 1 region
+            points.push({
+                lat: lat + x * 0.45,
+                lon: lon + y * 0.45,
+                distance: Math.sqrt(x*x + y*y) * 0.45
+            });
+        }
+    }
+
+    // Ring 3: Outer regional grid (80 to 200 miles, step size 1.0 degree)
+    for (let x = -3; x <= 3; x++) {
+        for (let y = -3; y <= 3; y++) {
+            if (Math.abs(x) <= 1 && Math.abs(y) <= 1) continue; // Skip Ring 2 region
+            points.push({
+                lat: lat + x * 1.0,
+                lon: lon + y * 1.0,
+                distance: Math.sqrt(x*x + y*y) * 1.0
+            });
+        }
+    }
+
+    // Sort coordinates by distance from search center to prioritize immediate loading
+    points.sort((a, b) => a.distance - b.distance);
 
     const unCachedOpenMeteo = points.filter(p => {
         const cell = getGridCellKey(p.lat, p.lon);

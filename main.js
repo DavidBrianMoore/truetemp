@@ -101,6 +101,11 @@ const HEADERS = { 'User-Agent': 'TrueTempApp/1.0 (david@truetemp.app)' };
 let leafletMap = null;
 let mapMarkersGroup = null;
 let mapCenterMarker = null;
+let mapUpdateCounter = 0;
+
+// Meteorological Settings
+let PRIMARY_SOURCE = localStorage.getItem('primary_source') || 'auto';
+let MAP_FILTER = localStorage.getItem('map_filter') || 'all';
 
 // Global callback for map popup button selections
 window.__selectMapLocation = async (lat, lon, name) => {
@@ -321,6 +326,50 @@ async function init() {
         document.getElementById('stations-modal').style.display = 'none';
     };
     document.getElementById('switch-station-btn').onclick = () => fetchNearbyStations(CURRENT_LAT, CURRENT_LON);
+
+    // Settings Modal Triggers
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettings = document.getElementById('close-settings');
+    const primarySourceSelect = document.getElementById('setting-primary-source');
+    const mapFilterSelect = document.getElementById('setting-map-filter');
+
+    if (settingsBtn && settingsModal && closeSettings && primarySourceSelect && mapFilterSelect) {
+        primarySourceSelect.value = PRIMARY_SOURCE;
+        mapFilterSelect.value = MAP_FILTER;
+
+        settingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsModal.style.display = 'flex';
+        });
+
+        closeSettings.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+
+        primarySourceSelect.addEventListener('change', async () => {
+            PRIMARY_SOURCE = primarySourceSelect.value;
+            localStorage.setItem('primary_source', PRIMARY_SOURCE);
+            if (CURRENT_LAT !== null && CURRENT_LON !== null) {
+                updateLoading('Re-routing atmospheric feed...');
+                await fetchWeatherData(CURRENT_LAT, CURRENT_LON);
+            }
+        });
+
+        mapFilterSelect.addEventListener('change', () => {
+            MAP_FILTER = mapFilterSelect.value;
+            localStorage.setItem('map_filter', MAP_FILTER);
+            if (CURRENT_LAT !== null && CURRENT_LON !== null) {
+                updateMap(CURRENT_LAT, CURRENT_LON);
+            }
+        });
+    }
 }
 
 function getPosition() {
@@ -333,14 +382,213 @@ function getPosition() {
     });
 }
 
+function getWindDirectionCompass(deg) {
+    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+    const idx = Math.round(deg / 22.5) % 16;
+    return directions[idx];
+}
+
+async function fetchOpenMeteoWeatherData(lat, lon) {
+    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,visibility&hourly=temperature_2m,weather_code,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=10`;
+    
+    updateLoading('Fetching international atmosphere grid...');
+    const res = await fetch(meteoUrl);
+    if (!res.ok) throw new Error('Open-Meteo API is currently offline.');
+    const data = await res.json();
+    
+    let cityName = `Coordinates: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+    try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`);
+        if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            const addr = geoData.address;
+            cityName = addr.city || addr.town || addr.village || addr.municipality || addr.county || cityName;
+            if (addr.state) cityName += `, ${addr.state}`;
+            else if (addr.country) cityName += `, ${addr.country}`;
+        }
+    } catch (e) {
+        console.warn('Reverse geocoding failed, using default coordinate labels.');
+    }
+    
+    const currentMapped = {
+        temperature: Math.round(data.current.temperature_2m),
+        shortForecast: getWeatherDescriptionFromCode(data.current.weather_code),
+        windSpeed: `${Math.round(data.current.wind_speed_10m)} mph`,
+        windDirection: getWindDirectionCompass(data.current.wind_direction_10m),
+        relativeHumidity: { value: Math.round(data.current.relative_humidity_2m) },
+        visibility: `${(data.current.visibility / 1609.34).toFixed(1)} mi`,
+        probabilityOfPrecipitation: { value: Math.round(data.hourly.precipitation_probability[0] || 0) }
+    };
+    
+    const hourlyMapped = data.hourly.time.slice(0, 24).map((time, idx) => {
+        return {
+            startTime: time,
+            temperature: Math.round(data.hourly.temperature_2m[idx]),
+            shortForecast: getWeatherDescriptionFromCode(data.hourly.weather_code[idx])
+        };
+    });
+    
+    const dailyMapped = [];
+    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    data.daily.time.forEach((dateStr, idx) => {
+        const date = new Date(dateStr + 'T00:00:00');
+        const dayName = idx === 0 ? 'Today' : weekdays[date.getDay()];
+        dailyMapped.push({
+            startTime: `${dateStr}T08:00:00`,
+            name: dayName,
+            isDaytime: true,
+            temperature: Math.round(data.daily.temperature_2m_max[idx]),
+            shortForecast: getWeatherDescriptionFromCode(data.daily.weather_code[idx])
+        });
+        dailyMapped.push({
+            startTime: `${dateStr}T20:00:00`,
+            name: `${dayName} Night`,
+            isDaytime: false,
+            temperature: Math.round(data.daily.temperature_2m_min[idx]),
+            shortForecast: getWeatherDescriptionFromCode(data.daily.weather_code[idx])
+        });
+    });
+    
+    return {
+        cityName,
+        current: currentMapped,
+        hourly: hourlyMapped,
+        daily: dailyMapped
+    };
+}
+
 async function fetchWeatherData(lat, lon, stationId = null) {
     if (lat === undefined || lon === undefined) return;
     CURRENT_LAT = lat;
     CURRENT_LON = lon;
+    
+    // Direct open-meteo provider bypass
+    if (PRIMARY_SOURCE === 'open-meteo') {
+        try {
+            const data = await fetchOpenMeteoWeatherData(lat, lon);
+            UI.city.textContent = data.cityName;
+            const stationEl = document.getElementById('station-info');
+            if (stationEl) stationEl.textContent = 'Provider: Open-Meteo Grid';
+            UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
+            UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+            
+            if (UI.radarLink) {
+                UI.radarLink.href = `https://zoom.earth/maps/radar/#c=${lat},${lon},8z`;
+                UI.radarLink.textContent = 'View Zoom Earth Radar 📡';
+            }
+            
+            ALL_HOURLY_DATA = data.hourly;
+            ALL_DAILY_DATA = data.daily;
+            INITIAL_STATE = data.current;
+            
+            renderWeather(data.current, data.hourly);
+            updateTheme(data.current.temperature, data.current.shortForecast);
+            
+            const relevant = data.daily.slice(0, 3);
+            const temps = relevant.map(p => p.temperature);
+            const high = Math.max(...temps);
+            const low = Math.min(...temps);
+            
+            const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
+            const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
+            UI.set('high', `${displayHigh}°`);
+            UI.set('low', `${displayLow}°`);
+            renderDailyForecast(data.daily);
+            
+            const backgroundTasks = async () => {
+                fetchTrends(lat, lon, high, low, high - 1, low + 1);
+                fetchAlerts(lat, lon);
+                updateMap(lat, lon);
+            };
+            backgroundTasks();
+            
+            saveToCache({
+                current: data.current,
+                hourly: data.hourly,
+                daily: data.daily,
+                lat,
+                lon,
+                trendParams: { high, low, tomorrowHigh: high - 1, tomorrowLow: low + 1 }
+            });
+        } catch (error) {
+            showError(error.message);
+        }
+        return;
+    }
+
     try {
         updateLoading('Locating atmospheric grid...');
-        const pointsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`, { headers: HEADERS });
-        if (!pointsRes.ok) throw new Error('Weather Service unavailable.');
+        
+        let pointsRes = null;
+        let isNWS = true;
+        try {
+            pointsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`, { headers: HEADERS });
+            if (!pointsRes.ok) isNWS = false;
+        } catch (e) {
+            isNWS = false;
+        }
+
+        // If forced NWS observations but offline or outside US
+        if (PRIMARY_SOURCE === 'nws-obs' && !isNWS) {
+            showError('NWS Live Sensor is unavailable outside the US or offline. Please select the Open-Meteo provider in Settings.');
+            return;
+        }
+        if (PRIMARY_SOURCE === 'nws-forecast' && !isNWS) {
+            showError('NWS Forecast model is unavailable outside the US or offline. Please select the Open-Meteo provider in Settings.');
+            return;
+        }
+
+        // Dynamic auto fallback
+        if (!isNWS) {
+            console.log('NWS unavailable. Gracefully falling back to Open-Meteo adapter.');
+            const data = await fetchOpenMeteoWeatherData(lat, lon);
+            UI.city.textContent = data.cityName;
+            const stationEl = document.getElementById('station-info');
+            if (stationEl) stationEl.textContent = 'Provider: Open-Meteo (Fallback)';
+            UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
+            UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+            
+            if (UI.radarLink) {
+                UI.radarLink.href = `https://zoom.earth/maps/radar/#c=${lat},${lon},8z`;
+                UI.radarLink.textContent = 'View Zoom Earth Radar 📡';
+            }
+            
+            ALL_HOURLY_DATA = data.hourly;
+            ALL_DAILY_DATA = data.daily;
+            INITIAL_STATE = data.current;
+            
+            renderWeather(data.current, data.hourly);
+            updateTheme(data.current.temperature, data.current.shortForecast);
+            
+            const relevant = data.daily.slice(0, 3);
+            const temps = relevant.map(p => p.temperature);
+            const high = Math.max(...temps);
+            const low = Math.min(...temps);
+            
+            const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
+            const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
+            UI.set('high', `${displayHigh}°`);
+            UI.set('low', `${displayLow}°`);
+            renderDailyForecast(data.daily);
+            
+            const backgroundTasks = async () => {
+                fetchTrends(lat, lon, high, low, high - 1, low + 1);
+                fetchAlerts(lat, lon);
+                updateMap(lat, lon);
+            };
+            backgroundTasks();
+            
+            saveToCache({
+                current: data.current,
+                hourly: data.hourly,
+                daily: data.daily,
+                lat,
+                lon,
+                trendParams: { high, low, tomorrowHigh: high - 1, tomorrowLow: low + 1 }
+            });
+            return;
+        }
+
         const pointsData = await pointsRes.json();
         const { forecast, forecastHourly, relativeLocation, radarStation } = pointsData.properties;
         const { city, state } = relativeLocation.properties;
@@ -353,6 +601,7 @@ async function fetchWeatherData(lat, lon, stationId = null) {
         
         if (UI.radarLink && radarStation) {
             UI.radarLink.href = `https://radar.weather.gov/station/${radarStation}/standard`;
+            UI.radarLink.textContent = 'View Local Radar 📡';
         }
 
         updateLoading('Loading current temperature...');
@@ -402,24 +651,31 @@ async function fetchWeatherData(lat, lon, stationId = null) {
                 }
             } catch (e) { console.error(e); }
 
-            try {
-                const sId = stationId || pointsData.properties.observationStations.split('/').pop() || (await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: HEADERS }).then(r => r.json()).then(d => d.features[0].properties.stationIdentifier));
-                if (sId) {
-                    const sEl = document.getElementById('station-info');
-                    if (sEl) sEl.textContent = `Station: ${sId}`;
-                    const obsRes = await fetch(`${NWS_API}/stations/${sId}/observations/latest`, { headers: HEADERS, cache: 'reload' });
-                    if (obsRes.ok) {
-                        const obsData = await obsRes.json();
-                        const celsius = obsData.properties.temperature.value;
-                        if (celsius !== null) {
-                            const currentTemp = Math.round((celsius * 9/5) + 32);
-                            const displayTemp = CURRENT_UNITS === 'F' ? currentTemp : Math.round((currentTemp - 32) * 5/9);
-                            UI.set('temp', `${displayTemp}°`);
-                            updateTheme(currentTemp, ALL_HOURLY_DATA[0].shortForecast);
+            // Live physical sensor observations
+            if (PRIMARY_SOURCE === 'auto' || PRIMARY_SOURCE === 'nws-obs') {
+                try {
+                    const sId = stationId || pointsData.properties.observationStations.split('/').pop() || (await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: HEADERS }).then(r => r.json()).then(d => d.features[0].properties.stationIdentifier));
+                    if (sId) {
+                        const sEl = document.getElementById('station-info');
+                        if (sEl) sEl.textContent = `Station: ${sId}`;
+                        const obsRes = await fetch(`${NWS_API}/stations/${sId}/observations/latest`, { headers: HEADERS, cache: 'reload' });
+                        if (obsRes.ok) {
+                            const obsData = await obsRes.json();
+                            const celsius = obsData.properties.temperature.value;
+                            if (celsius !== null) {
+                                const currentTemp = Math.round((celsius * 9/5) + 32);
+                                const displayTemp = CURRENT_UNITS === 'F' ? currentTemp : Math.round((currentTemp - 32) * 5/9);
+                                UI.set('temp', `${displayTemp}°`);
+                                updateTheme(currentTemp, ALL_HOURLY_DATA[0].shortForecast);
+                            }
                         }
                     }
-                }
-            } catch (e) { console.error(e); }
+                } catch (e) { console.error(e); }
+            } else {
+                const sEl = document.getElementById('station-info');
+                if (sEl) sEl.textContent = 'Source: NWS Forecast Grid';
+            }
+
             fetchAlerts(lat, lon);
             updateMap(lat, lon);
         };
@@ -665,7 +921,7 @@ function getTempColor(tempF) {
  * Initializes and dynamically updates the Leaflet map, fetching
  * nearby stations and querying their temperatures concurrently.
  */
-async function updateMap(lat, lon) {
+async function updateMap(lat, lon, shouldSetView = true) {
     if (typeof L === 'undefined') {
         console.warn('Leaflet mapping library is not available.');
         return;
@@ -673,6 +929,9 @@ async function updateMap(lat, lon) {
 
     const container = document.getElementById('weather-map');
     if (!container) return;
+
+    mapUpdateCounter++;
+    const currentId = mapUpdateCounter;
 
     try {
         // Initialize Map if not present
@@ -692,33 +951,52 @@ async function updateMap(lat, lon) {
             }).addTo(leafletMap);
 
             mapMarkersGroup = L.layerGroup().addTo(leafletMap);
+
+            // Sleek dynamic loading: fetch and show telemetry around the new map viewport center after panning or zooming finishes
+            let moveEndTimeout;
+            leafletMap.on('moveend', () => {
+                clearTimeout(moveEndTimeout);
+                moveEndTimeout = setTimeout(async () => {
+                    const center = leafletMap.getCenter();
+                    await updateMap(center.lat, center.lng, false);
+                }, 300);
+            });
         } else {
-            leafletMap.setView([lat, lon], 10);
+            if (shouldSetView) {
+                leafletMap.setView([lat, lon], leafletMap.getZoom());
+            }
             mapMarkersGroup.clearLayers();
+        }
+
+        // Pulse marker representing active weather location (remains at CURRENT_LAT/CURRENT_LON if panning around)
+        if (shouldSetView || !mapCenterMarker) {
             if (mapCenterMarker) {
                 mapCenterMarker.remove();
             }
+            const centerIcon = L.divIcon({
+                className: 'custom-center-icon',
+                html: '<div class="center-gps-marker"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+            const activeLat = shouldSetView ? lat : (CURRENT_LAT || lat);
+            const activeLon = shouldSetView ? lon : (CURRENT_LON || lon);
+            mapCenterMarker = L.marker([activeLat, activeLon], { icon: centerIcon }).addTo(leafletMap);
         }
 
-        // Center GPS pulsing target marker
-        const centerIcon = L.divIcon({
-            className: 'custom-center-icon',
-            html: '<div class="center-gps-marker"></div>',
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
-        });
-        mapCenterMarker = L.marker([lat, lon], { icon: centerIcon }).addTo(leafletMap);
-
-        // Retrieve nearby NWS weather stations
+        // Retrieve nearby weather stations (unless filter is set to fallback-only)
         let stations = [];
-        try {
-            const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { headers: HEADERS });
-            if (stationsRes.ok) {
-                const data = await stationsRes.json();
-                stations = data.features || [];
+        if (MAP_FILTER !== 'fallback-only') {
+            try {
+                const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { headers: HEADERS });
+                if (currentId !== mapUpdateCounter) return;
+                if (stationsRes.ok) {
+                    const data = await stationsRes.json();
+                    stations = data.features || [];
+                }
+            } catch (e) {
+                console.error('Failed to retrieve NWS stations:', e);
             }
-        } catch (e) {
-            console.error('Failed to retrieve NWS stations:', e);
         }
 
         const maxStations = 8;
@@ -739,8 +1017,10 @@ async function updateMap(lat, lon) {
                     isStation: true
                 };
             });
-        } else {
-            // Fallback grid if offline or outside US
+        }
+        
+        // Fallback grid if offline, outside US, or filter is fallback-only (but skip if filter is nws-only)
+        if (mapLocations.length === 0 && MAP_FILTER !== 'nws-only') {
             const offsets = [
                 { dLat: 0.12, dLon: 0 },
                 { dLat: -0.12, dLon: 0 },
@@ -771,6 +1051,7 @@ async function updateMap(lat, lon) {
         const lons = mapLocations.map(l => l.lon).join(',');
         
         const meteoRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`);
+        if (currentId !== mapUpdateCounter) return;
         if (meteoRes.ok) {
             const meteoData = await meteoRes.json();
             const results = Array.isArray(meteoData) ? meteoData : [meteoData];

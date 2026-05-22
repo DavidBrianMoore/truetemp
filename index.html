@@ -28,7 +28,8 @@
                 <button id="search-btn">🔍</button>
                 <div id="search-results" class="search-results glass-card" style="display: none;"></div>
             </div>
-            <div class="unit-toggle">
+            <div class="unit-toggle" style="display: flex; gap: 8px;">
+                <button id="settings-btn" class="clickable" title="Settings" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; transition: all 0.2s;">⚙️</button>
                 <button id="toggle-units" class="clickable">°F</button>
             </div>
         </header>
@@ -152,6 +153,42 @@
             </div>
             <div id="stations-list" class="stations-list">
                 <!-- Stations will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="stations-modal" style="display: none;">
+        <div class="modal-content glass-card" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>Meteorological Settings</h3>
+                <button id="close-settings" class="clickable">✕</button>
+            </div>
+            <div class="settings-body" style="padding: 1.5rem 1rem; display: flex; flex-direction: column; gap: 1.5rem;">
+                <div class="setting-group">
+                    <label style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); font-size: 0.9rem;">Primary Temperature Provider</label>
+                    <select id="setting-primary-source" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.8); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer; transition: border-color 0.2s;">
+                        <option value="auto">Auto (NWS Live Sensor / Open-Meteo Fallback)</option>
+                        <option value="nws-obs">NWS Live Sensor Observations Only</option>
+                        <option value="nws-forecast">NWS Forecast Model Grid Only</option>
+                        <option value="open-meteo">Open-Meteo High-Fidelity Grid Only</option>
+                    </select>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.35;">
+                        Controls the primary telemetry provider for the main weather dashboard card.
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); font-size: 0.9rem;">Thermal Map Badge Filter</label>
+                    <select id="setting-map-filter" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.8); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer; transition: border-color 0.2s;">
+                        <option value="all">Show All Station and Grid Badges</option>
+                        <option value="nws-only">NWS Physical Sensor Stations Only</option>
+                        <option value="fallback-only">Interpolated Fallback Grid Only</option>
+                    </select>
+                    <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.35;">
+                        Filter which geographic telemetry markers are displayed on the interactive Leaflet map.
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -864,6 +864,11 @@ async function fetchWeatherData(lat, lon, stationId = null) {
         }
 
         const backgroundTasks = async () => {
+            let high = INITIAL_STATE?.temperature || 70;
+            let low = INITIAL_STATE?.temperature || 50;
+            let tomHigh = high;
+            let tomLow = low;
+
             try {
                 const dailyRes = await fetch(forecast, { headers: HEADERS, cache: 'reload' });
                 if (dailyRes.ok) {
@@ -873,8 +878,8 @@ async function fetchWeatherData(lat, lon, stationId = null) {
                     
                     const relevant = dailyPeriods.slice(0, 3);
                     const temps = relevant.map(p => p.temperature);
-                    const high = Math.max(...temps);
-                    const low = Math.min(...temps);
+                    high = Math.max(...temps);
+                    low = Math.min(...temps);
                     
                     const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
                     const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
@@ -885,7 +890,6 @@ async function fetchWeatherData(lat, lon, stationId = null) {
                     const tomDate = new Date(); tomDate.setDate(tomDate.getDate() + 1);
                     const tomDateStr = tomDate.toDateString();
                     const tomPeriods = dailyPeriods.filter(p => new Date(p.startTime).toDateString() === tomDateStr);
-                    let tomHigh, tomLow;
                     if (tomPeriods.length > 0) {
                         const tomTemps = tomPeriods.map(p => p.temperature);
                         tomHigh = Math.max(...tomTemps);
@@ -922,6 +926,16 @@ async function fetchWeatherData(lat, lon, stationId = null) {
                 const sEl = document.getElementById('station-info');
                 if (sEl) sEl.textContent = 'Source: NWS Forecast Grid';
             }
+
+            // Save fully populated NWS dataset to cache
+            saveToCache({
+                current: INITIAL_STATE,
+                hourly: ALL_HOURLY_DATA,
+                daily: ALL_DAILY_DATA,
+                lat,
+                lon,
+                trendParams: { high, low, tomorrowHigh: tomHigh, tomorrowLow: tomLow }
+            });
 
             fetchAlerts(lat, lon);
             updateMap(lat, lon);
@@ -1040,7 +1054,13 @@ function updateAppFocus(data, isHistorical = false) {
         }
     }
     const resetBtn = document.getElementById('return-today');
-    if (resetBtn) resetBtn.style.display = baseDate.toDateString() === new Date().toDateString() ? 'none' : 'flex';
+    if (resetBtn) {
+        resetBtn.style.display = baseDate.toDateString() === new Date().toDateString() ? 'none' : 'flex';
+        resetBtn.onclick = () => {
+            updateAppFocus(INITIAL_STATE);
+            resetBtn.style.display = 'none';
+        };
+    }
 }
 
 async function fetchAlerts(lat, lon) {
@@ -1077,10 +1097,21 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
     const yest = new Date(baseDate); yest.setDate(baseDate.getDate() - 1);
     const ly = new Date(baseDate); ly.setFullYear(baseDate.getFullYear() - 1);
     const yestDate = yest.toISOString().split('T')[0], lyDate = ly.toISOString().split('T')[0];
+    
+    let lyHigh = todayHigh - 1;
     try {
         const lyRes = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit`);
-        const lyData = await lyRes.json();
-        const lyHigh = Math.round(lyData.daily?.temperature_2m_max[0] || 0);
+        if (lyRes.ok) {
+            const lyData = await lyRes.json();
+            if (lyData.daily && lyData.daily.temperature_2m_max) {
+                lyHigh = Math.round(lyData.daily.temperature_2m_max[0] || (todayHigh - 1));
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to fetch Last Year archive telemetry, using fallback estimation.', e);
+    }
+
+    try {
         UI.trends.container.innerHTML = ''; UI.trends.items = [];
         const isToday = baseDate.toDateString() === new Date().toDateString();
         const trendData = [
@@ -1093,7 +1124,25 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
             const diffVal = CURRENT_UNITS === 'F' ? Math.abs(d.diff) : Math.round(Math.abs(d.diff) / 1.8);
             const text = d.diff > 0 ? `${diffVal}° hotter` : d.diff < 0 ? `${diffVal}° cooler` : 'Same';
             el.innerHTML = `<span style="font-size:0.7rem; color:var(--text-secondary);">${d.label}</span><div style="display:flex; align-items: baseline; gap: 6px; margin: 4px 0;"><span style="font-size:1.5rem; font-weight:700;">${CURRENT_UNITS === 'F' ? d.high : Math.round((d.high - 32) * 5/9)}°</span></div><span class="diff-badge small" style="background:rgba(255,255,255,0.1);">${text}</span>`;
-            el.onclick = () => { if (d.isForward) return; updateAppFocus({ temperature: d.high, shortForecast: 'Historical', date: d.date }, true); };
+            
+            el.onclick = () => {
+                if (d.isForward) {
+                    const tomPeriod = ALL_DAILY_DATA.find(p => new Date(p.startTime).toDateString() === d.date.toDateString());
+                    if (tomPeriod) {
+                        updateAppFocus(tomPeriod, false);
+                    } else {
+                        updateAppFocus({ temperature: d.high, shortForecast: 'Tomorrow\'s Outlook', date: d.date }, false);
+                    }
+                } else {
+                    const isHist = d.label.includes('In'); // Only Last Year is historical
+                    updateAppFocus({
+                        temperature: d.high,
+                        shortForecast: isHist ? 'Historical Record' : 'Yesterday\'s Temperature',
+                        date: d.date
+                    }, isHist);
+                }
+            };
+            
             UI.trends.container.appendChild(el); UI.trends.items.push(el);
         });
         LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);

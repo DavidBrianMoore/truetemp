@@ -107,6 +107,18 @@ let mapUpdateCounter = 0;
 let PRIMARY_SOURCE = localStorage.getItem('primary_source') || 'auto';
 let MAP_FILTER = localStorage.getItem('map_filter') || 'all';
 
+// High-Performance Map Telemetry Cache & Queue Manager
+const MAP_TELEMETRY_CACHE = new Map(); // key: "gridCell" -> Array of marker objects
+const MAP_FETCHING_SET = new Set();    // Coordinates currently in-flight to prevent redundant queries
+
+/**
+ * Indexes coordinates into high-density ~2.5 mile grid cells (0.04 degrees)
+ */
+const getGridCellKey = (lat, lon) => {
+    const step = 0.04;
+    return `${Math.round(lat / step)},${Math.round(lon / step)}`;
+};
+
 // Global callback for map popup button selections
 window.__selectMapLocation = async (lat, lon, name) => {
     updateLoading(`Analyzing atmosphere at ${name}...`);
@@ -1198,7 +1210,6 @@ async function updateMap(lat, lon, shouldSetView = true) {
             if (shouldSetView) {
                 leafletMap.setView([lat, lon], leafletMap.getZoom());
             }
-            mapMarkersGroup.clearLayers();
         }
 
         // Pulse marker representing active weather location (remains at CURRENT_LAT/CURRENT_LON if panning around)
@@ -1217,103 +1228,433 @@ async function updateMap(lat, lon, shouldSetView = true) {
             mapCenterMarker = L.marker([activeLat, activeLon], { icon: centerIcon }).addTo(leafletMap);
         }
 
-        // Retrieve nearby weather stations (unless filter is set to fallback-only)
-        let stations = [];
-        if (MAP_FILTER !== 'fallback-only') {
+        // Draw cached markers instantly for ultra-low latency zooming and panning!
+        renderMapMarkersFromCache();
+
+        // Perform deferred background fetching to keep data fresh and populate new regions
+        setTimeout(async () => {
+            if (currentId !== mapUpdateCounter) return;
+            
+            // 1. Fetch NWS physical sensor stations (inside the US)
+            if (MAP_FILTER === 'all' || MAP_FILTER === 'nws-only') {
+                try {
+                    const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { headers: HEADERS });
+                    if (currentId === mapUpdateCounter && stationsRes.ok) {
+                        const data = await stationsRes.json();
+                        const stations = data.features || [];
+                        stations.slice(0, 6).forEach(s => {
+                            const sId = s.properties.stationIdentifier;
+                            const coords = s.geometry.coordinates;
+                            const cellKey = getGridCellKey(coords[1], coords[0]);
+                            
+                            // Asynchronously fetch latest observation for this station
+                            fetch(`${NWS_API}/stations/${sId}/observations/latest`, { headers: HEADERS }).then(r => {
+                                if (r.ok) return r.json();
+                            }).then(obsData => {
+                                if (obsData && currentId === mapUpdateCounter) {
+                                    const celsius = obsData.properties.temperature.value;
+                                    if (celsius !== null) {
+                                        const tempF = Math.round((celsius * 9/5) + 32);
+                                        const condition = obsData.properties.textDescription || 'Clear';
+                                        
+                                        const markerObj = {
+                                            lat: coords[1],
+                                            lon: coords[0],
+                                            tempF,
+                                            condition,
+                                            source: 'nws',
+                                            name: `${sId} - ${s.properties.name.split(',')[0]}`,
+                                            cellKey
+                                        };
+                                        
+                                        if (!MAP_TELEMETRY_CACHE.has(cellKey)) {
+                                            MAP_TELEMETRY_CACHE.set(cellKey, []);
+                                        }
+                                        const list = MAP_TELEMETRY_CACHE.get(cellKey);
+                                        const existingIdx = list.findIndex(m => m.source === 'nws' && m.name.startsWith(sId));
+                                        if (existingIdx >= 0) list[existingIdx] = markerObj;
+                                        else list.push(markerObj);
+                                        
+                                        renderMapMarkersFromCache();
+                                    }
+                                }
+                            }).catch(err => console.error(err));
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Coordinates outside US, skipping NWS stations fetch.');
+                }
+            }
+
+            // 2. Fetch Open-Meteo Grid Points
+            if (MAP_FILTER === 'all' || MAP_FILTER === 'openmeteo-only') {
+                const offsets = [
+                    { dLat: 0, dLon: 0 },
+                    { dLat: 0.06, dLon: 0.08 },
+                    { dLat: -0.06, dLon: -0.08 },
+                    { dLat: 0.06, dLon: -0.08 },
+                    { dLat: -0.06, dLon: 0.08 }
+                ];
+                const omPoints = offsets.map(o => ({ lat: lat + o.dLat, lon: lon + o.dLon }));
+                const omLats = omPoints.map(p => p.lat.toFixed(4)).join(',');
+                const omLons = omPoints.map(p => p.lon.toFixed(4)).join(',');
+                
+                try {
+                    const omRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${omLats}&longitude=${omLons}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`);
+                    if (currentId === mapUpdateCounter && omRes.ok) {
+                        const omData = await omRes.json();
+                        const results = Array.isArray(omData) ? omData : [omData];
+                        results.forEach((res, index) => {
+                            const p = omPoints[index];
+                            const cellKey = getGridCellKey(p.lat, p.lon);
+                            const tempF = Math.round(res.current.temperature_2m);
+                            const code = res.current.weather_code;
+                            const condition = getWeatherDescriptionFromCode(code);
+                            
+                            const markerObj = {
+                                lat: p.lat,
+                                lon: p.lon,
+                                tempF,
+                                condition,
+                                source: 'openmeteo',
+                                name: `Open-Meteo Grid Node`,
+                                cellKey
+                            };
+                            
+                            if (!MAP_TELEMETRY_CACHE.has(cellKey)) {
+                                MAP_TELEMETRY_CACHE.set(cellKey, []);
+                            }
+                            const list = MAP_TELEMETRY_CACHE.get(cellKey);
+                            const existingIdx = list.findIndex(m => m.source === 'openmeteo');
+                            if (existingIdx >= 0) list[existingIdx] = markerObj;
+                            else list.push(markerObj);
+                        });
+                        renderMapMarkersFromCache();
+                    }
+                } catch (e) {
+                    console.error('Failed to update Open-Meteo map grid:', e);
+                }
+            }
+
+            // 3. Fetch MET Norway Grid Points (Staggered background queue)
+            if (MAP_FILTER === 'all' || MAP_FILTER === 'metnorway-only') {
+                const offsets = [
+                    { dLat: 0.04, dLon: 0.04 },
+                    { dLat: -0.04, dLon: -0.04 },
+                    { dLat: 0.04, dLon: -0.04 },
+                    { dLat: -0.04, dLon: 0.04 }
+                ];
+                
+                let delay = 50;
+                offsets.forEach(o => {
+                    const pLat = lat + o.dLat;
+                    const pLon = lon + o.dLon;
+                    const cellKey = getGridCellKey(pLat, pLon);
+                    
+                    setTimeout(async () => {
+                        if (currentId !== mapUpdateCounter) return;
+                        try {
+                            const metUrl = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${pLat.toFixed(4)}&lon=${pLon.toFixed(4)}`;
+                            const res = await fetch(metUrl, { headers: HEADERS });
+                            if (currentId === mapUpdateCounter && res.ok) {
+                                const metData = await res.json();
+                                const latest = metData.properties.timeseries[0];
+                                const tempC = latest.data.instant.details.air_temperature;
+                                const tempF = Math.round((tempC * 9/5) + 32);
+                                const symbol = latest.data.next_1_hours?.summary?.symbol_code || 'clearsky_day';
+                                const condition = cleanMetNorwaySymbol(symbol);
+                                
+                                const markerObj = {
+                                    lat: pLat,
+                                    lon: pLon,
+                                    tempF,
+                                    condition,
+                                    source: 'metnorway',
+                                    name: `MET Norway Grid Node`,
+                                    cellKey
+                                };
+                                
+                                if (!MAP_TELEMETRY_CACHE.has(cellKey)) {
+                                    MAP_TELEMETRY_CACHE.set(cellKey, []);
+                                }
+                                const list = MAP_TELEMETRY_CACHE.get(cellKey);
+                                const existingIdx = list.findIndex(m => m.source === 'metnorway');
+                                if (existingIdx >= 0) list[existingIdx] = markerObj;
+                                else list.push(markerObj);
+                                
+                                renderMapMarkersFromCache();
+                            }
+                        } catch (e) {
+                            console.error('Failed to update MET Norway map grid:', e);
+                        }
+                    }, delay);
+                    delay += 600; // stagger yr.no hits by 600ms
+                });
+            }
+
+            // Also trigger background preloading for surrounding 5x5 grid cells
+            preloadSurroundingTelemetry(lat, lon);
+
+        }, 100);
+
+    } catch (e) {
+        console.error('Failed to initialize or update weather map:', e);
+    }
+}
+
+/**
+ * Asynchronously preloads surrounding grid telemetry from all sources in the background.
+ */
+async function preloadSurroundingTelemetry(lat, lon) {
+    if (lat === undefined || lon === undefined) return;
+
+    // Surrounding grid offsets for Open-Meteo (5x5 grid = 24 points)
+    const points = [];
+    for (let dLat = -2; dLat <= 2; dLat++) {
+        for (let dLon = -2; dLon <= 2; dLon++) {
+            if (dLat === 0 && dLon === 0) continue;
+            points.push({
+                lat: lat + dLat * 0.08,
+                lon: lon + dLon * 0.08
+            });
+        }
+    }
+
+    const unCachedOpenMeteo = points.filter(p => {
+        const cell = getGridCellKey(p.lat, p.lon);
+        return !MAP_TELEMETRY_CACHE.has(cell) || !MAP_TELEMETRY_CACHE.get(cell).some(m => m.source === 'openmeteo');
+    });
+
+    if (unCachedOpenMeteo.length > 0) {
+        // Fetch surrounding grid in one single fast batch request
+        const latsStr = unCachedOpenMeteo.map(p => p.lat.toFixed(4)).join(',');
+        const lonsStr = unCachedOpenMeteo.map(p => p.lon.toFixed(4)).join(',');
+        const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latsStr}&longitude=${lonsStr}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`;
+        
+        try {
+            const res = await fetch(omUrl);
+            if (res.ok) {
+                const data = await res.json();
+                const results = Array.isArray(data) ? data : [data];
+                results.forEach((resItem, idx) => {
+                    const p = unCachedOpenMeteo[idx];
+                    const cellKey = getGridCellKey(p.lat, p.lon);
+                    const tempF = Math.round(resItem.current.temperature_2m);
+                    const code = resItem.current.weather_code;
+                    const condition = getWeatherDescriptionFromCode(code);
+                    
+                    const markerObj = {
+                        lat: p.lat,
+                        lon: p.lon,
+                        tempF,
+                        condition,
+                        source: 'openmeteo',
+                        name: `Open-Meteo Grid Node`,
+                        cellKey
+                    };
+                    
+                    if (!MAP_TELEMETRY_CACHE.has(cellKey)) {
+                        MAP_TELEMETRY_CACHE.set(cellKey, []);
+                    }
+                    if (!MAP_TELEMETRY_CACHE.get(cellKey).some(m => m.source === 'openmeteo')) {
+                        MAP_TELEMETRY_CACHE.get(cellKey).push(markerObj);
+                    }
+                });
+                triggerMapMarkerRefresh();
+            }
+        } catch (e) {
+            console.error('Failed to preload Open-Meteo grid telemetry:', e);
+        }
+    }
+
+    // Surrounding grid offsets for MET Norway (3x3 grid = 8 points) to respect API rate limits
+    const metPoints = [];
+    for (let dLat = -1; dLat <= 1; dLat++) {
+        for (let dLon = -1; dLon <= 1; dLon++) {
+            if (dLat === 0 && dLon === 0) continue;
+            metPoints.push({
+                lat: lat + dLat * 0.08,
+                lon: lon + dLon * 0.08
+            });
+        }
+    }
+
+    let metDelay = 200;
+    metPoints.forEach(p => {
+        const cellKey = getGridCellKey(p.lat, p.lon);
+        if (MAP_TELEMETRY_CACHE.has(cellKey) && MAP_TELEMETRY_CACHE.get(cellKey).some(m => m.source === 'metnorway')) return;
+        
+        setTimeout(async () => {
+            const fetchingKey = `metnorway:${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
+            if (MAP_FETCHING_SET.has(fetchingKey)) return;
+            MAP_FETCHING_SET.add(fetchingKey);
+            
             try {
-                const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { headers: HEADERS });
-                if (currentId !== mapUpdateCounter) return;
-                if (stationsRes.ok) {
-                    const data = await stationsRes.json();
-                    stations = data.features || [];
+                const metUrl = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`;
+                const res = await fetch(metUrl, { headers: HEADERS });
+                if (res.ok) {
+                    const data = await res.json();
+                    const latest = data.properties.timeseries[0];
+                    const tempC = latest.data.instant.details.air_temperature;
+                    const tempF = Math.round((tempC * 9/5) + 32);
+                    const symbol = latest.data.next_1_hours?.summary?.symbol_code || 'clearsky_day';
+                    const condition = cleanMetNorwaySymbol(symbol);
+                    
+                    const markerObj = {
+                        lat: p.lat,
+                        lon: p.lon,
+                        tempF,
+                        condition,
+                        source: 'metnorway',
+                        name: `MET Norway Grid Node`,
+                        cellKey
+                    };
+                    
+                    if (!MAP_TELEMETRY_CACHE.has(cellKey)) {
+                        MAP_TELEMETRY_CACHE.set(cellKey, []);
+                    }
+                    if (!MAP_TELEMETRY_CACHE.get(cellKey).some(m => m.source === 'metnorway')) {
+                        MAP_TELEMETRY_CACHE.get(cellKey).push(markerObj);
+                    }
+                    triggerMapMarkerRefresh();
                 }
             } catch (e) {
-                console.error('Failed to retrieve NWS stations:', e);
+                console.error('Failed to preload MET Norway telemetry:', e);
+            } finally {
+                MAP_FETCHING_SET.delete(fetchingKey);
             }
-        }
+        }, metDelay);
+        metDelay += 800; // staggered by 800ms
+    });
 
-        const maxStations = 8;
-        let mapLocations = [];
-
-        if (stations.length > 0) {
-            mapLocations = stations.slice(0, maxStations).map(f => {
-                const coords = f.geometry.coordinates; // [longitude, latitude]
-                const name = f.properties.name;
-                const id = f.properties.stationIdentifier;
-                const distInfo = getDistanceAndBearing(lat, lon, coords[1], coords[0]);
-                return {
-                    lat: coords[1],
-                    lon: coords[0],
-                    name: `${id} - ${name.split(',')[0]}`,
-                    distance: parseFloat(distInfo.distance),
-                    distanceText: `${distInfo.distance} mi ${distInfo.direction}`,
-                    isStation: true
-                };
-            });
-        }
-        
-        // Fallback grid if offline, outside US, or filter is fallback-only (but skip if filter is nws-only)
-        if (mapLocations.length === 0 && MAP_FILTER !== 'nws-only') {
-            const offsets = [
-                { dLat: 0.12, dLon: 0 },
-                { dLat: -0.12, dLon: 0 },
-                { dLat: 0, dLon: 0.15 },
-                { dLat: 0, dLon: -0.15 },
-                { dLat: 0.08, dLon: 0.1 },
-                { dLat: -0.08, dLon: -0.1 }
-            ];
-            mapLocations = offsets.map((o, idx) => {
-                const pLat = lat + o.dLat;
-                const pLon = lon + o.dLon;
-                const distInfo = getDistanceAndBearing(lat, lon, pLat, pLon);
-                return {
-                    lat: pLat,
-                    lon: pLon,
-                    name: `Atmospheric Station ${idx + 1}`,
-                    distance: parseFloat(distInfo.distance),
-                    distanceText: `${distInfo.distance} mi ${distInfo.direction}`,
-                    isStation: false
-                };
-            });
-        }
-
-        if (mapLocations.length === 0) return;
-
-        // Perform parallel current weather data load for all coordinates using Open-Meteo
-        const lats = mapLocations.map(l => l.lat).join(',');
-        const lons = mapLocations.map(l => l.lon).join(',');
-        
-        const meteoRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`);
-        if (currentId !== mapUpdateCounter) return;
-        if (meteoRes.ok) {
-            const meteoData = await meteoRes.json();
-            const results = Array.isArray(meteoData) ? meteoData : [meteoData];
+    // Surrounding NWS Physical Stations (if inside the US)
+    try {
+        const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { headers: HEADERS });
+        if (stationsRes.ok) {
+            const data = await stationsRes.json();
+            const stations = data.features || [];
+            const activeStations = stations.slice(0, 6);
             
-            results.forEach((res, index) => {
-                const loc = mapLocations[index];
-                if (!loc) return;
+            let nwsDelay = 100;
+            activeStations.forEach(s => {
+                const sId = s.properties.stationIdentifier;
+                const coords = s.geometry.coordinates; // [lon, lat]
+                const cellKey = getGridCellKey(coords[1], coords[0]);
                 
-                const tempF = Math.round(res.current.temperature_2m);
-                const displayTemp = CURRENT_UNITS === 'F' ? tempF : Math.round((tempF - 32) * 5/9);
-                const code = res.current.weather_code;
-                const condition = getWeatherDescriptionFromCode(code);
-                const color = getTempColor(tempF);
+                if (MAP_TELEMETRY_CACHE.has(cellKey) && MAP_TELEMETRY_CACHE.get(cellKey).some(m => m.source === 'nws')) return;
                 
-                // Slick circular temperature marker badge
+                setTimeout(async () => {
+                    const fetchingKey = `nws:${sId}`;
+                    if (MAP_FETCHING_SET.has(fetchingKey)) return;
+                    MAP_FETCHING_SET.add(fetchingKey);
+                    
+                    try {
+                        const obsRes = await fetch(`${NWS_API}/stations/${sId}/observations/latest`, { headers: HEADERS });
+                        if (obsRes.ok) {
+                            const obsData = await obsRes.json();
+                            const celsius = obsData.properties.temperature.value;
+                            if (celsius !== null) {
+                                const tempF = Math.round((celsius * 9/5) + 32);
+                                const condition = obsData.properties.textDescription || 'Clear';
+                                
+                                const markerObj = {
+                                    lat: coords[1],
+                                    lon: coords[0],
+                                    tempF,
+                                    condition,
+                                    source: 'nws',
+                                    name: `${sId} - ${s.properties.name.split(',')[0]}`,
+                                    cellKey
+                                };
+                                
+                                if (!MAP_TELEMETRY_CACHE.has(cellKey)) {
+                                    MAP_TELEMETRY_CACHE.set(cellKey, []);
+                                }
+                                if (!MAP_TELEMETRY_CACHE.get(cellKey).some(m => m.source === 'nws')) {
+                                    MAP_TELEMETRY_CACHE.get(cellKey).push(markerObj);
+                                }
+                                triggerMapMarkerRefresh();
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Failed to preload NWS observations for ${sId}:`, e);
+                    } finally {
+                        MAP_FETCHING_SET.delete(fetchingKey);
+                    }
+                }, nwsDelay);
+                nwsDelay += 400; // staggered by 400ms
+            });
+        }
+    } catch (e) {
+        console.warn('Coordinates outside US, skipping NWS stations preload.');
+    }
+}
+
+/**
+ * Triggers map redraw without shifting map center view.
+ */
+function triggerMapMarkerRefresh() {
+    if (leafletMap) {
+        renderMapMarkersFromCache();
+    }
+}
+
+/**
+ * Renders all weather badges from MAP_TELEMETRY_CACHE inside visible map bounds.
+ */
+function renderMapMarkersFromCache() {
+    if (!leafletMap || !mapMarkersGroup) return;
+    
+    mapMarkersGroup.clearLayers();
+    
+    const bounds = leafletMap.getBounds();
+    const renderedCoords = new Set();
+    
+    for (const [cellKey, markers] of MAP_TELEMETRY_CACHE.entries()) {
+        markers.forEach(loc => {
+            if (bounds.contains([loc.lat, loc.lon])) {
+                // Apply Settings map filter
+                if (MAP_FILTER === 'nws-only' && loc.source !== 'nws') return;
+                if (MAP_FILTER === 'openmeteo-only' && loc.source !== 'openmeteo') return;
+                if (MAP_FILTER === 'metnorway-only' && loc.source !== 'metnorway') return;
+                
+                // Prevent overlapping markers at exact identical coordinates (e.g. within 0.005 degrees)
+                const coordKey = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`;
+                if (renderedCoords.has(coordKey)) return;
+                renderedCoords.add(coordKey);
+                
+                const displayTemp = CURRENT_UNITS === 'F' ? loc.tempF : Math.round((loc.tempF - 32) * 5/9);
+                const color = getTempColor(loc.tempF);
+                
+                let sourceClass = 'src-openmeteo';
+                let sourceLabel = 'O-M';
+                if (loc.source === 'nws') {
+                    sourceClass = 'src-nws';
+                    sourceLabel = 'NWS';
+                } else if (loc.source === 'metnorway') {
+                    sourceClass = 'src-metnorway';
+                    sourceLabel = 'MET';
+                }
+                
                 const tempIcon = L.divIcon({
                     className: 'custom-temp-icon',
-                    html: `<div class="temp-marker-badge" style="background: ${color};">${displayTemp}°</div>`,
-                    iconSize: [38, 38],
-                    iconAnchor: [19, 19]
+                    html: `
+                        <div class="temp-marker-badge ${sourceClass}" style="background: ${color};">
+                            <span class="temp-val">${displayTemp}°</span>
+                            <span class="temp-src">${sourceLabel}</span>
+                        </div>
+                    `,
+                    iconSize: [44, 44],
+                    iconAnchor: [22, 22]
                 });
                 
                 const popupContent = `
                     <div class="map-popup-card" style="min-width: 180px; padding: 4px 0; font-family: 'Outfit', sans-serif;">
                         <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 2px;">${loc.name}</div>
-                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">${loc.distanceText} from center</div>
+                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">Source: ${loc.source === 'nws' ? 'NWS Live Observation' : loc.source === 'metnorway' ? 'MET Norway (yr.no)' : 'Open-Meteo Grid'}</div>
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
                             <span style="font-size: 1.4rem; font-weight: 800; color: ${color};">${displayTemp}°${CURRENT_UNITS}</span>
-                            <span style="font-size: 0.75rem; font-weight: 600; opacity: 0.8; color: var(--text-secondary);">${condition}</span>
+                            <span style="font-size: 0.75rem; font-weight: 600; opacity: 0.8; color: var(--text-secondary);">${loc.condition}</span>
                         </div>
                         <button class="clickable" onclick="window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${loc.name.replace(/'/g, "\\'")}')" 
                                 style="background: var(--accent); color: #0f172a; border: none; padding: 7px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; width: 100%; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.2);">
@@ -1325,10 +1666,8 @@ async function updateMap(lat, lon, shouldSetView = true) {
                 L.marker([loc.lat, loc.lon], { icon: tempIcon })
                     .bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) })
                     .addTo(mapMarkersGroup);
-            });
-        }
-    } catch (e) {
-        console.error('Failed to initialize or update weather map:', e);
+            }
+        });
     }
 }
 

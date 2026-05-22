@@ -182,9 +182,10 @@
                 <div class="setting-group">
                     <label style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); font-size: 0.9rem;">Thermal Map Badge Filter</label>
                     <select id="setting-map-filter" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.8); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer; transition: border-color 0.2s;">
-                        <option value="all">Show All Station and Grid Badges</option>
+                        <option value="all">Show All Sources (NWS, Open-Meteo, MET Norway)</option>
                         <option value="nws-only">NWS Physical Sensor Stations Only</option>
-                        <option value="fallback-only">Interpolated Fallback Grid Only</option>
+                        <option value="openmeteo-only">Open-Meteo Grid Only</option>
+                        <option value="metnorway-only">MET Norway Grid Only</option>
                     </select>
                     <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.35;">
                         Filter which geographic telemetry markers are displayed on the interactive Leaflet map.

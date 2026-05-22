@@ -1184,7 +1184,7 @@ async function updateMap(lat, lon, shouldSetView = true) {
             leafletMap = L.map('weather-map', {
                 zoomControl: false,
                 attributionControl: true
-            }).setView([lat, lon], 10);
+            }).setView([lat, lon], 12);
 
             // Sleek zoom control top-right
             L.control.zoom({ position: 'topright' }).addTo(leafletMap);

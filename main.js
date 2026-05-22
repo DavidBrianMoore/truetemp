@@ -457,6 +457,177 @@ async function fetchOpenMeteoWeatherData(lat, lon) {
     };
 }
 
+function cleanMetNorwaySymbol(symbol) {
+    if (!symbol) return 'Clear';
+    const base = symbol.split('_')[0].toLowerCase();
+    const maps = {
+        clearsky: 'Clear Sky',
+        fair: 'Fair',
+        partlycloudy: 'Partly Cloudy',
+        cloudy: 'Cloudy',
+        lightrainshowers: 'Light Rain Showers',
+        rainshowers: 'Rain Showers',
+        heavyrainshowers: 'Heavy Rain Showers',
+        lightrainshowersthunder: 'Light Rain Showers with Thunder',
+        rainshowersthunder: 'Rain Showers with Thunder',
+        heavyrainshowersthunder: 'Heavy Rain Showers with Thunder',
+        lightsleetshowers: 'Light Sleet Showers',
+        sleetshowers: 'Sleet Showers',
+        heavysleetshowers: 'Heavy Sleet Showers',
+        lightsleetshowersthunder: 'Light Sleet Showers with Thunder',
+        sleetshowersthunder: 'Sleet Showers with Thunder',
+        heavysleetshowersthunder: 'Heavy Sleet Showers with Thunder',
+        lightsnowshowers: 'Light Snow Showers',
+        snowshowers: 'Snow Showers',
+        heavysnowshowers: 'Heavy Snow Showers',
+        lightsnowshowersthunder: 'Light Snow Showers with Thunder',
+        snowshowersthunder: 'Snow Showers with Thunder',
+        heavysnowshowersthunder: 'Heavy Snow Showers with Thunder',
+        lightrain: 'Light Rain',
+        rain: 'Rain',
+        heavyrain: 'Heavy Rain',
+        lightrainthunder: 'Light Rain with Thunder',
+        rainthunder: 'Rain with Thunder',
+        heavyrainthunder: 'Heavy Rain with Thunder',
+        lightsleet: 'Light Sleet',
+        sleet: 'Sleet',
+        heavysleet: 'Heavy Sleet',
+        lightsleetthunder: 'Light Sleet with Thunder',
+        sleetthunder: 'Sleet with Thunder',
+        heavysleetthunder: 'Heavy Sleet with Thunder',
+        lightsnow: 'Light Snow',
+        snow: 'Snow',
+        heavysnow: 'Heavy Snow',
+        lightsnowthunder: 'Light Snow with Thunder',
+        snowthunder: 'Snow with Thunder',
+        heavysnowthunder: 'Heavy Snow with Thunder',
+        fog: 'Fog'
+    };
+    if (maps[base]) return maps[base];
+    return base.replace(/[-_]/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+async function fetchMetNorwayWeatherData(lat, lon) {
+    const metUrl = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${Number(lat).toFixed(4)}&lon=${Number(lon).toFixed(4)}`;
+    
+    updateLoading('Fetching international forecast from MET Norway...');
+    const res = await fetch(metUrl, { headers: HEADERS });
+    if (!res.ok) throw new Error('MET Norway API is currently offline.');
+    const data = await res.json();
+    
+    let cityName = `Coordinates: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+    try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`);
+        if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            const addr = geoData.address;
+            cityName = addr.city || addr.town || addr.village || addr.municipality || addr.county || cityName;
+            if (addr.state) cityName += `, ${addr.state}`;
+            else if (addr.country) cityName += `, ${addr.country}`;
+        }
+    } catch (e) {
+        console.warn('Reverse geocoding failed, using default coordinate labels.');
+    }
+    
+    const timeseries = data.properties.timeseries;
+    if (!timeseries || timeseries.length === 0) throw new Error('No timeseries data found in MET Norway response.');
+    
+    const latest = timeseries[0];
+    const tempC = latest.data.instant.details.air_temperature;
+    const tempF = Math.round((tempC * 9/5) + 32);
+    
+    const symbol = latest.data.next_1_hours?.summary?.symbol_code || latest.data.next_6_hours?.summary?.symbol_code || 'clearsky_day';
+    const windSpeedC = latest.data.instant.details.wind_speed; // in m/s
+    const windSpeedMph = Math.round(windSpeedC * 2.23694);
+    const windDir = latest.data.instant.details.wind_from_direction || 0;
+    const humidity = latest.data.instant.details.relative_humidity || 0;
+    
+    const currentMapped = {
+        temperature: tempF,
+        shortForecast: cleanMetNorwaySymbol(symbol),
+        windSpeed: `${windSpeedMph} mph`,
+        windDirection: getWindDirectionCompass(windDir),
+        relativeHumidity: { value: Math.round(humidity) },
+        visibility: '10.0 mi', // MET Norway doesn't return horizontal visibility in compact
+        probabilityOfPrecipitation: { value: Math.round(latest.data.next_1_hours?.details?.probability_of_precipitation || latest.data.next_6_hours?.details?.probability_of_precipitation || 0) }
+    };
+    
+    const hourlyMapped = timeseries.slice(0, 24).map(ts => {
+        const hTempC = ts.data.instant.details.air_temperature;
+        const hTempF = Math.round((hTempC * 9/5) + 32);
+        const hSymbol = ts.data.next_1_hours?.summary?.symbol_code || ts.data.next_6_hours?.summary?.symbol_code || 'clearsky_day';
+        return {
+            startTime: ts.time,
+            temperature: hTempF,
+            shortForecast: cleanMetNorwaySymbol(hSymbol)
+        };
+    });
+    
+    // Group by day for daily mapping
+    const groups = {};
+    timeseries.forEach(ts => {
+        const dateStr = ts.time.split('T')[0];
+        if (!groups[dateStr]) {
+            groups[dateStr] = [];
+        }
+        groups[dateStr].push(ts);
+    });
+    
+    const dailyMapped = [];
+    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dates = Object.keys(groups).sort();
+    
+    dates.forEach((dateStr, idx) => {
+        const group = groups[dateStr];
+        const temps = group.map(ts => ts.data.instant.details.air_temperature);
+        const maxC = Math.max(...temps);
+        const minC = Math.min(...temps);
+        const maxF = Math.round((maxC * 9/5) + 32);
+        const minF = Math.round((minC * 9/5) + 32);
+        
+        let daySymbol = 'clearsky_day';
+        let nightSymbol = 'clearsky_night';
+        
+        group.forEach(ts => {
+            const hour = new Date(ts.time).getUTCHours();
+            const symbolCode = ts.data.next_1_hours?.summary?.symbol_code || ts.data.next_6_hours?.summary?.symbol_code;
+            if (symbolCode) {
+                if (hour >= 10 && hour <= 14) {
+                    daySymbol = symbolCode;
+                }
+                if (hour >= 22 || hour <= 2) {
+                    nightSymbol = symbolCode;
+                }
+            }
+        });
+        
+        const date = new Date(dateStr + 'T00:00:00');
+        const dayName = idx === 0 ? 'Today' : weekdays[date.getDay()];
+        
+        dailyMapped.push({
+            startTime: `${dateStr}T08:00:00`,
+            name: dayName,
+            isDaytime: true,
+            temperature: maxF,
+            shortForecast: cleanMetNorwaySymbol(daySymbol)
+        });
+        dailyMapped.push({
+            startTime: `${dateStr}T20:00:00`,
+            name: `${dayName} Night`,
+            isDaytime: false,
+            temperature: minF,
+            shortForecast: cleanMetNorwaySymbol(nightSymbol)
+        });
+    });
+    
+    return {
+        cityName,
+        current: currentMapped,
+        hourly: hourlyMapped,
+        daily: dailyMapped
+    };
+}
+
 async function fetchWeatherData(lat, lon, stationId = null) {
     if (lat === undefined || lon === undefined) return;
     CURRENT_LAT = lat;
@@ -469,6 +640,60 @@ async function fetchWeatherData(lat, lon, stationId = null) {
             UI.city.textContent = data.cityName;
             const stationEl = document.getElementById('station-info');
             if (stationEl) stationEl.textContent = 'Provider: Open-Meteo Grid';
+            UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
+            UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+            
+            if (UI.radarLink) {
+                UI.radarLink.href = `https://zoom.earth/maps/radar/#c=${lat},${lon},8z`;
+                UI.radarLink.textContent = 'View Zoom Earth Radar 📡';
+            }
+            
+            ALL_HOURLY_DATA = data.hourly;
+            ALL_DAILY_DATA = data.daily;
+            INITIAL_STATE = data.current;
+            
+            renderWeather(data.current, data.hourly);
+            updateTheme(data.current.temperature, data.current.shortForecast);
+            
+            const relevant = data.daily.slice(0, 3);
+            const temps = relevant.map(p => p.temperature);
+            const high = Math.max(...temps);
+            const low = Math.min(...temps);
+            
+            const displayHigh = CURRENT_UNITS === 'F' ? high : Math.round((high - 32) * 5/9);
+            const displayLow = CURRENT_UNITS === 'F' ? low : Math.round((low - 32) * 5/9);
+            UI.set('high', `${displayHigh}°`);
+            UI.set('low', `${displayLow}°`);
+            renderDailyForecast(data.daily);
+            
+            const backgroundTasks = async () => {
+                fetchTrends(lat, lon, high, low, high - 1, low + 1);
+                fetchAlerts(lat, lon);
+                updateMap(lat, lon);
+            };
+            backgroundTasks();
+            
+            saveToCache({
+                current: data.current,
+                hourly: data.hourly,
+                daily: data.daily,
+                lat,
+                lon,
+                trendParams: { high, low, tomorrowHigh: high - 1, tomorrowLow: low + 1 }
+            });
+        } catch (error) {
+            showError(error.message);
+        }
+        return;
+    }
+
+    // Direct MET Norway provider bypass
+    if (PRIMARY_SOURCE === 'met-norway') {
+        try {
+            const data = await fetchMetNorwayWeatherData(lat, lon);
+            UI.city.textContent = data.cityName;
+            const stationEl = document.getElementById('station-info');
+            if (stationEl) stationEl.textContent = 'Provider: MET Norway (yr.no)';
             UI.set('date', new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
             UI.set('updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
             
@@ -530,18 +755,26 @@ async function fetchWeatherData(lat, lon, stationId = null) {
 
         // If forced NWS observations but offline or outside US
         if (PRIMARY_SOURCE === 'nws-obs' && !isNWS) {
-            showError('NWS Live Sensor is unavailable outside the US or offline. Please select the Open-Meteo provider in Settings.');
+            showError('NWS Live Sensor is unavailable outside the US or offline. Please select the Open-Meteo or MET Norway provider in Settings.');
             return;
         }
         if (PRIMARY_SOURCE === 'nws-forecast' && !isNWS) {
-            showError('NWS Forecast model is unavailable outside the US or offline. Please select the Open-Meteo provider in Settings.');
+            showError('NWS Forecast model is unavailable outside the US or offline. Please select the Open-Meteo or MET Norway provider in Settings.');
             return;
         }
 
-        // Dynamic auto fallback
+        // Dynamic auto fallback (Prioritize US NWS, fallback globally)
         if (!isNWS) {
-            console.log('NWS unavailable. Gracefully falling back to Open-Meteo adapter.');
-            const data = await fetchOpenMeteoWeatherData(lat, lon);
+            console.log('NWS unavailable. Gracefully falling back to Open-Meteo/MET Norway adapter.');
+            let data;
+            let providerName = 'Open-Meteo (Fallback)';
+            try {
+                data = await fetchOpenMeteoWeatherData(lat, lon);
+            } catch (err) {
+                console.warn('Open-Meteo fallback failed, trying MET Norway...', err);
+                data = await fetchMetNorwayWeatherData(lat, lon);
+                providerName = 'MET Norway (Fallback)';
+            }
             UI.city.textContent = data.cityName;
             const stationEl = document.getElementById('station-info');
             if (stationEl) stationEl.textContent = 'Provider: Open-Meteo (Fallback)';

@@ -168,10 +168,11 @@
                 <div class="setting-group">
                     <label style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); font-size: 0.9rem;">Primary Temperature Provider</label>
                     <select id="setting-primary-source" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.8); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer; transition: border-color 0.2s;">
-                        <option value="auto">Auto (NWS Live Sensor / Open-Meteo Fallback)</option>
-                        <option value="nws-obs">NWS Live Sensor Observations Only</option>
-                        <option value="nws-forecast">NWS Forecast Model Grid Only</option>
-                        <option value="open-meteo">Open-Meteo High-Fidelity Grid Only</option>
+                        <option value="auto">Auto (Prioritize US NWS / Global Fallback)</option>
+                        <option value="nws-obs">US NWS Live Sensor Observations (US Only)</option>
+                        <option value="nws-forecast">US NWS Forecast Model Grid (US Only)</option>
+                        <option value="open-meteo">Open-Meteo High-Fidelity Grid (Global)</option>
+                        <option value="met-norway">MET Norway (yr.no) Weather API (Global)</option>
                     </select>
                     <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.35;">
                         Controls the primary telemetry provider for the main weather dashboard card.

@@ -102,6 +102,8 @@ let leafletMap = null;
 let mapMarkersGroup = null;
 let mapCenterMarker = null;
 let mapUpdateCounter = 0;
+let activePopupLatLng = null;
+let isRedrawingMarkers = false;
 
 // Meteorological Settings
 let PRIMARY_SOURCE = localStorage.getItem('primary_source') || 'auto';
@@ -1206,6 +1208,16 @@ async function updateMap(lat, lon, shouldSetView = true) {
                     await updateMap(center.lat, center.lng, false);
                 }, 300);
             });
+
+            // Handle popup state tracking to prevent disappearing on redraws
+            leafletMap.on('popupopen', (e) => {
+                activePopupLatLng = e.popup.getLatLng();
+            });
+            leafletMap.on('popupclose', () => {
+                if (!isRedrawingMarkers) {
+                    activePopupLatLng = null;
+                }
+            });
         } else {
             if (shouldSetView) {
                 leafletMap.setView([lat, lon], leafletMap.getZoom());
@@ -1635,6 +1647,10 @@ function triggerMapMarkerRefresh() {
 function renderMapMarkersFromCache() {
     if (!leafletMap || !mapMarkersGroup) return;
     
+    const wasPopupOpen = activePopupLatLng !== null;
+    const prevPopupLatLng = activePopupLatLng;
+
+    isRedrawingMarkers = true;
     mapMarkersGroup.clearLayers();
     
     const bounds = leafletMap.getBounds();
@@ -1654,14 +1670,19 @@ function renderMapMarkersFromCache() {
         });
     }
 
-    // 2. Prioritize most reliable sources (NWS = 1, MET Norway = 2, Open-Meteo = 3)
-    const getReliabilityScore = (source) => {
-        if (source === 'nws') return 1;
-        if (source === 'metnorway') return 2;
+    // 2. Prioritize most reliable sources (and ensure active popup marker has highest priority)
+    const getReliabilityScore = (loc) => {
+        if (activePopupLatLng && 
+            Math.abs(loc.lat - activePopupLatLng.lat) < 0.0001 && 
+            Math.abs(loc.lon - activePopupLatLng.lng) < 0.0001) {
+            return 0; // Highest priority for the active popup marker!
+        }
+        if (loc.source === 'nws') return 1;
+        if (loc.source === 'metnorway') return 2;
         return 3; // openmeteo
     };
     
-    candidates.sort((a, b) => getReliabilityScore(a.source) - getReliabilityScore(b.source));
+    candidates.sort((a, b) => getReliabilityScore(a) - getReliabilityScore(b));
 
     // 3. Set dynamic zoom-based proximity thresholds (in degrees) to prevent overlapping
     const zoom = leafletMap.getZoom();
@@ -1708,6 +1729,7 @@ function renderMapMarkersFromCache() {
     }
 
     // 5. Render visible markers
+    let markerToOpen = null;
     visibleMarkers.forEach(loc => {
         const displayTemp = CURRENT_UNITS === 'F' ? loc.tempF : Math.round((loc.tempF - 32) * 5/9);
         const color = getTempColor(loc.tempF);
@@ -1745,10 +1767,22 @@ function renderMapMarkersFromCache() {
             </div>
         `;
         
-        L.marker([loc.lat, loc.lon], { icon: tempIcon })
+        const marker = L.marker([loc.lat, loc.lon], { icon: tempIcon })
             .bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) })
             .addTo(mapMarkersGroup);
+            
+        // Check if this marker matches the previously open popup's position
+        if (wasPopupOpen && prevPopupLatLng && 
+            Math.abs(loc.lat - prevPopupLatLng.lat) < 0.0001 && 
+            Math.abs(loc.lon - prevPopupLatLng.lng) < 0.0001) {
+            markerToOpen = marker;
+        }
     });
+
+    if (markerToOpen) {
+        markerToOpen.openPopup();
+    }
+    isRedrawingMarkers = false;
 }
 
 init();

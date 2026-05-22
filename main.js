@@ -1608,8 +1608,9 @@ function renderMapMarkersFromCache() {
     mapMarkersGroup.clearLayers();
     
     const bounds = leafletMap.getBounds();
-    const renderedCoords = new Set();
+    const candidates = [];
     
+    // 1. Gather all candidates currently inside map bounds
     for (const [cellKey, markers] of MAP_TELEMETRY_CACHE.entries()) {
         markers.forEach(loc => {
             if (bounds.contains([loc.lat, loc.lon])) {
@@ -1618,53 +1619,106 @@ function renderMapMarkersFromCache() {
                 if (MAP_FILTER === 'openmeteo-only' && loc.source !== 'openmeteo') return;
                 if (MAP_FILTER === 'metnorway-only' && loc.source !== 'metnorway') return;
                 
-                // Prevent overlapping markers at exact identical coordinates (e.g. within 0.005 degrees)
-                const coordKey = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`;
-                if (renderedCoords.has(coordKey)) return;
-                renderedCoords.add(coordKey);
-                
-                const displayTemp = CURRENT_UNITS === 'F' ? loc.tempF : Math.round((loc.tempF - 32) * 5/9);
-                const color = getTempColor(loc.tempF);
-                
-                let sourceClass = 'src-openmeteo';
-                if (loc.source === 'nws') {
-                    sourceClass = 'src-nws';
-                } else if (loc.source === 'metnorway') {
-                    sourceClass = 'src-metnorway';
-                }
-                
-                const tempIcon = L.divIcon({
-                    className: 'custom-temp-icon',
-                    html: `
-                        <div class="temp-marker-badge ${sourceClass}" style="background: ${color};">
-                            ${displayTemp}°
-                        </div>
-                    `,
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 15]
-                });
-                
-                const popupContent = `
-                    <div class="map-popup-card" style="min-width: 180px; padding: 4px 0; font-family: 'Outfit', sans-serif;">
-                        <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 2px;">${loc.name}</div>
-                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">Source: ${loc.source === 'nws' ? 'NWS Live Observation' : loc.source === 'metnorway' ? 'MET Norway (yr.no)' : 'Open-Meteo Grid'}</div>
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
-                            <span style="font-size: 1.4rem; font-weight: 800; color: ${color};">${displayTemp}°${CURRENT_UNITS}</span>
-                            <span style="font-size: 0.75rem; font-weight: 600; opacity: 0.8; color: var(--text-secondary);">${loc.condition}</span>
-                        </div>
-                        <button class="clickable" onclick="window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${loc.name.replace(/'/g, "\\'")}')" 
-                                style="background: var(--accent); color: #0f172a; border: none; padding: 7px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; width: 100%; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.2);">
-                            Set as Active Location
-                        </button>
-                    </div>
-                `;
-                
-                L.marker([loc.lat, loc.lon], { icon: tempIcon })
-                    .bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) })
-                    .addTo(mapMarkersGroup);
+                candidates.push(loc);
             }
         });
     }
+
+    // 2. Prioritize most reliable sources (NWS = 1, MET Norway = 2, Open-Meteo = 3)
+    const getReliabilityScore = (source) => {
+        if (source === 'nws') return 1;
+        if (source === 'metnorway') return 2;
+        return 3; // openmeteo
+    };
+    
+    candidates.sort((a, b) => getReliabilityScore(a.source) - getReliabilityScore(b.source));
+
+    // 3. Set dynamic zoom-based proximity thresholds (in degrees) to prevent overlapping
+    const zoom = leafletMap.getZoom();
+    let proximityThreshold = 0.005;
+    if (zoom <= 5) {
+        proximityThreshold = 0.6;   // ~40 miles
+    } else if (zoom <= 7) {
+        proximityThreshold = 0.3;   // ~20 miles
+    } else if (zoom <= 9) {
+        proximityThreshold = 0.12;  // ~8 miles
+    } else if (zoom <= 11) {
+        proximityThreshold = 0.04;  // ~2.5 miles
+    } else if (zoom <= 13) {
+        proximityThreshold = 0.012; // ~0.8 miles
+    } else {
+        proximityThreshold = 0.003; // ~0.2 miles
+    }
+
+    // Also limit max markers count based on zoom to keep rendering clean
+    let maxMarkers = 35;
+    if (zoom <= 5) maxMarkers = 8;
+    else if (zoom <= 7) maxMarkers = 15;
+    else if (zoom <= 9) maxMarkers = 25;
+    else if (zoom <= 11) maxMarkers = 35;
+    else if (zoom <= 13) maxMarkers = 50;
+    else maxMarkers = 80;
+
+    // 4. Proximity filtering: keep the highest reliability markers and drop nearby ones
+    const visibleMarkers = [];
+    
+    for (const loc of candidates) {
+        if (visibleMarkers.length >= maxMarkers) break;
+        
+        // Check if too close to an already rendered (and thus more reliable) marker
+        const isTooClose = visibleMarkers.some(rendered => {
+            const latDiff = Math.abs(rendered.lat - loc.lat);
+            const lonDiff = Math.abs(rendered.lon - loc.lon);
+            return latDiff < proximityThreshold && lonDiff < proximityThreshold;
+        });
+        
+        if (!isTooClose) {
+            visibleMarkers.push(loc);
+        }
+    }
+
+    // 5. Render visible markers
+    visibleMarkers.forEach(loc => {
+        const displayTemp = CURRENT_UNITS === 'F' ? loc.tempF : Math.round((loc.tempF - 32) * 5/9);
+        const color = getTempColor(loc.tempF);
+        
+        let sourceClass = 'src-openmeteo';
+        if (loc.source === 'nws') {
+            sourceClass = 'src-nws';
+        } else if (loc.source === 'metnorway') {
+            sourceClass = 'src-metnorway';
+        }
+        
+        const tempIcon = L.divIcon({
+            className: 'custom-temp-icon',
+            html: `
+                <div class="temp-marker-badge ${sourceClass}" style="background: ${color};">
+                    ${displayTemp}°
+                </div>
+            `,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+        
+        const popupContent = `
+            <div class="map-popup-card" style="min-width: 180px; padding: 4px 0; font-family: 'Outfit', sans-serif;">
+                <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 2px;">${loc.name}</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">Source: ${loc.source === 'nws' ? 'NWS Live Observation' : loc.source === 'metnorway' ? 'MET Norway (yr.no)' : 'Open-Meteo Grid'}</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                    <span style="font-size: 1.4rem; font-weight: 800; color: ${color};">${displayTemp}°${CURRENT_UNITS}</span>
+                    <span style="font-size: 0.75rem; font-weight: 600; opacity: 0.8; color: var(--text-secondary);">${loc.condition}</span>
+                </div>
+                <button class="clickable" onclick="window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${loc.name.replace(/'/g, "\\'")}')" 
+                        style="background: var(--accent); color: #0f172a; border: none; padding: 7px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; width: 100%; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.2);">
+                    Set as Active Location
+                </button>
+            </div>
+        `;
+        
+        L.marker([loc.lat, loc.lon], { icon: tempIcon })
+            .bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) })
+            .addTo(mapMarkersGroup);
+    });
 }
 
 init();

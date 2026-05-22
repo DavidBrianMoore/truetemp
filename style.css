@@ -484,3 +484,132 @@ body {
     color: var(--text-secondary);
     white-space: pre-line;
 }
+
+/* Custom Leaflet Map Styling */
+#weather-map {
+    width: 100%;
+    height: 380px;
+    background: #0f172a !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    contain: strict;
+}
+
+/* Dark mode override for Leaflet */
+.leaflet-container {
+    background-color: #0f172a !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+.leaflet-bar {
+    border: none !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-bar a {
+    background-color: rgba(30, 41, 59, 0.8) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(10px);
+    transition: background-color 0.2s ease;
+}
+
+.leaflet-bar a:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--accent) !important;
+}
+
+.leaflet-popup-content-wrapper {
+    background: rgba(15, 23, 42, 0.85) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6) !important;
+    border-radius: 1.25rem !important;
+}
+
+.leaflet-popup-tip {
+    background: rgba(15, 23, 42, 0.85) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    backdrop-filter: blur(15px);
+}
+
+/* Custom Temp Badge Marker */
+.temp-marker-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.25);
+    border: 2px solid #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.temp-marker-badge:hover {
+    transform: scale(1.2) translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+    z-index: 1000 !important;
+}
+
+/* Center GPS Pulse Marker */
+.center-gps-marker {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3.5px solid #fff;
+    box-shadow: 0 0 15px var(--accent);
+    position: relative;
+}
+
+.center-gps-marker::after {
+    content: '';
+    position: absolute;
+    top: -9px;
+    left: -9px;
+    right: -9px;
+    bottom: -9px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    animation: gpsPulse 2s infinite ease-out;
+    opacity: 0;
+}
+
+@keyframes gpsPulse {
+    0% { transform: scale(0.5); opacity: 0; }
+    50% { opacity: 0.5; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Leaflet Attribution styling */
+.leaflet-control-attribution {
+    background: rgba(15, 23, 42, 0.6) !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    font-size: 0.65rem !important;
+    backdrop-filter: blur(5px);
+    border-top-left-radius: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.leaflet-control-attribution a {
+    color: var(--accent) !important;
+    text-decoration: none;
+}
+
+.leaflet-control-attribution a:hover {
+    text-decoration: underline;
+}
+
+/* Leaflet popup customization overrides */
+.leaflet-popup-close-button {
+    display: none !important;
+}
+

@@ -97,6 +97,18 @@ let CURRENT_LON = null;
 const NWS_API = 'https://api.weather.gov';
 const HEADERS = { 'User-Agent': 'TrueTempApp/1.0 (david@truetemp.app)' };
 
+// Map State Variables
+let leafletMap = null;
+let mapMarkersGroup = null;
+let mapCenterMarker = null;
+
+// Global callback for map popup button selections
+window.__selectMapLocation = async (lat, lon, name) => {
+    updateLoading(`Analyzing atmosphere at ${name}...`);
+    await fetchWeatherData(lat, lon);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 async function init() {
     // Register ATA State
     ata.registerState('hourlyData', () => ALL_HOURLY_DATA);
@@ -409,6 +421,7 @@ async function fetchWeatherData(lat, lon, stationId = null) {
                 }
             } catch (e) { console.error(e); }
             fetchAlerts(lat, lon);
+            updateMap(lat, lon);
         };
         backgroundTasks();
     } catch (error) { showError(error.message); }
@@ -590,6 +603,219 @@ function showError(msg) { if (UI.state) UI.state.innerHTML = `<div class="error-
 function calculateFeelsLike(t, h, w) { if (t <= 50 && w > 3) return Math.round(35.74 + 0.6215 * t - 35.75 * Math.pow(w, 0.16) + 0.4275 * t * Math.pow(w, 0.16)); if (t >= 80) return Math.round(0.5 * (t + 61 + (t - 68) * 1.2 + h * 0.094)); return Math.round(t); }
 function saveToCache(data) { localStorage.setItem('weather_cache', JSON.stringify({ timestamp: Date.now(), data })); }
 function loadFromCache() { const c = localStorage.getItem('weather_cache'); if (!c) return null; const { timestamp, data } = JSON.parse(c); return Date.now() - timestamp > 15 * 60 * 1000 ? null : { data }; }
-function renderFullWeather(data) { const { current, hourly, daily, lat, lon, trendParams } = data; if (current) INITIAL_STATE = current; if (lat) { CURRENT_LAT = lat; CURRENT_LON = lon; } renderWeather(current, hourly); renderDailyForecast(daily); if (trendParams && lat) fetchTrends(lat, lon, trendParams.high, trendParams.low, trendParams.tomorrowHigh, trendParams.tomorrowLow); }
+function renderFullWeather(data) { const { current, hourly, daily, lat, lon, trendParams } = data; if (current) INITIAL_STATE = current; if (lat) { CURRENT_LAT = lat; CURRENT_LON = lon; } renderWeather(current, hourly); renderDailyForecast(daily); if (trendParams && lat) fetchTrends(lat, lon, trendParams.high, trendParams.low, trendParams.tomorrowHigh, trendParams.tomorrowLow); if (lat) updateMap(lat, lon); }
+
+/**
+ * Calculates the distance and cardinal direction from start to end coordinates.
+ */
+function getDistanceAndBearing(lat1, lon1, lat2, lon2) {
+    const R = 3958.8; // Radius of Earth in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in miles
+
+    // Bearing
+    const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+    let brng = Math.atan2(y, x) * 180 / Math.PI;
+    brng = (brng + 360) % 360;
+
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const index = Math.round(brng / 45) % 8;
+    return {
+        distance: distance.toFixed(1),
+        direction: directions[index]
+    };
+}
+
+/**
+ * Maps Open-Meteo weather codes to clean descriptions.
+ */
+function getWeatherDescriptionFromCode(code) {
+    if (code === 0) return 'Clear';
+    if (code === 1 || code === 2 || code === 3) return 'Partly Cloudy';
+    if (code === 45 || code === 48) return 'Foggy';
+    if (code >= 51 && code <= 55) return 'Drizzle';
+    if (code >= 61 && code <= 65) return 'Rain';
+    if (code >= 71 && code <= 77) return 'Snow';
+    if (code >= 80 && code <= 82) return 'Rain Showers';
+    if (code >= 85 && code <= 86) return 'Snow Showers';
+    if (code >= 95 && code <= 99) return 'Thunderstorm';
+    return 'Cloudy';
+}
+
+/**
+ * Maps Fahrenheit temperature to dynamically curated color codes.
+ */
+function getTempColor(tempF) {
+    if (tempF <= 32) return '#38bdf8'; // Cyan
+    if (tempF <= 50) return '#0ea5e9'; // Blue
+    if (tempF <= 65) return '#10b981'; // Emerald
+    if (tempF <= 80) return '#f59e0b'; // Amber
+    if (tempF <= 95) return '#f97316'; // Orange
+    return '#ef4444'; // Red
+}
+
+/**
+ * Initializes and dynamically updates the Leaflet map, fetching
+ * nearby stations and querying their temperatures concurrently.
+ */
+async function updateMap(lat, lon) {
+    if (typeof L === 'undefined') {
+        console.warn('Leaflet mapping library is not available.');
+        return;
+    }
+
+    const container = document.getElementById('weather-map');
+    if (!container) return;
+
+    try {
+        // Initialize Map if not present
+        if (!leafletMap) {
+            leafletMap = L.map('weather-map', {
+                zoomControl: false,
+                attributionControl: true
+            }).setView([lat, lon], 10);
+
+            // Sleek zoom control top-right
+            L.control.zoom({ position: 'topright' }).addTo(leafletMap);
+
+            // CartoDB Dark Matter map tile layer
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 20
+            }).addTo(leafletMap);
+
+            mapMarkersGroup = L.layerGroup().addTo(leafletMap);
+        } else {
+            leafletMap.setView([lat, lon], 10);
+            mapMarkersGroup.clearLayers();
+            if (mapCenterMarker) {
+                mapCenterMarker.remove();
+            }
+        }
+
+        // Center GPS pulsing target marker
+        const centerIcon = L.divIcon({
+            className: 'custom-center-icon',
+            html: '<div class="center-gps-marker"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        mapCenterMarker = L.marker([lat, lon], { icon: centerIcon }).addTo(leafletMap);
+
+        // Retrieve nearby NWS weather stations
+        let stations = [];
+        try {
+            const stationsRes = await fetch(`${NWS_API}/points/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}/stations`, { headers: HEADERS });
+            if (stationsRes.ok) {
+                const data = await stationsRes.json();
+                stations = data.features || [];
+            }
+        } catch (e) {
+            console.error('Failed to retrieve NWS stations:', e);
+        }
+
+        const maxStations = 8;
+        let mapLocations = [];
+
+        if (stations.length > 0) {
+            mapLocations = stations.slice(0, maxStations).map(f => {
+                const coords = f.geometry.coordinates; // [longitude, latitude]
+                const name = f.properties.name;
+                const id = f.properties.stationIdentifier;
+                const distInfo = getDistanceAndBearing(lat, lon, coords[1], coords[0]);
+                return {
+                    lat: coords[1],
+                    lon: coords[0],
+                    name: `${id} - ${name.split(',')[0]}`,
+                    distance: parseFloat(distInfo.distance),
+                    distanceText: `${distInfo.distance} mi ${distInfo.direction}`,
+                    isStation: true
+                };
+            });
+        } else {
+            // Fallback grid if offline or outside US
+            const offsets = [
+                { dLat: 0.12, dLon: 0 },
+                { dLat: -0.12, dLon: 0 },
+                { dLat: 0, dLon: 0.15 },
+                { dLat: 0, dLon: -0.15 },
+                { dLat: 0.08, dLon: 0.1 },
+                { dLat: -0.08, dLon: -0.1 }
+            ];
+            mapLocations = offsets.map((o, idx) => {
+                const pLat = lat + o.dLat;
+                const pLon = lon + o.dLon;
+                const distInfo = getDistanceAndBearing(lat, lon, pLat, pLon);
+                return {
+                    lat: pLat,
+                    lon: pLon,
+                    name: `Atmospheric Station ${idx + 1}`,
+                    distance: parseFloat(distInfo.distance),
+                    distanceText: `${distInfo.distance} mi ${distInfo.direction}`,
+                    isStation: false
+                };
+            });
+        }
+
+        if (mapLocations.length === 0) return;
+
+        // Perform parallel current weather data load for all coordinates using Open-Meteo
+        const lats = mapLocations.map(l => l.lat).join(',');
+        const lons = mapLocations.map(l => l.lon).join(',');
+        
+        const meteoRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`);
+        if (meteoRes.ok) {
+            const meteoData = await meteoRes.json();
+            const results = Array.isArray(meteoData) ? meteoData : [meteoData];
+            
+            results.forEach((res, index) => {
+                const loc = mapLocations[index];
+                if (!loc) return;
+                
+                const tempF = Math.round(res.current.temperature_2m);
+                const displayTemp = CURRENT_UNITS === 'F' ? tempF : Math.round((tempF - 32) * 5/9);
+                const code = res.current.weather_code;
+                const condition = getWeatherDescriptionFromCode(code);
+                const color = getTempColor(tempF);
+                
+                // Slick circular temperature marker badge
+                const tempIcon = L.divIcon({
+                    className: 'custom-temp-icon',
+                    html: `<div class="temp-marker-badge" style="background: ${color};">${displayTemp}°</div>`,
+                    iconSize: [38, 38],
+                    iconAnchor: [19, 19]
+                });
+                
+                const popupContent = `
+                    <div class="map-popup-card" style="min-width: 180px; padding: 4px 0; font-family: 'Outfit', sans-serif;">
+                        <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 2px;">${loc.name}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">${loc.distanceText} from center</div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                            <span style="font-size: 1.4rem; font-weight: 800; color: ${color};">${displayTemp}°${CURRENT_UNITS}</span>
+                            <span style="font-size: 0.75rem; font-weight: 600; opacity: 0.8; color: var(--text-secondary);">${condition}</span>
+                        </div>
+                        <button class="clickable" onclick="window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${loc.name.replace(/'/g, "\\'")}')" 
+                                style="background: var(--accent); color: #0f172a; border: none; padding: 7px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; width: 100%; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.2);">
+                            Set as Active Location
+                        </button>
+                    </div>
+                `;
+                
+                L.marker([loc.lat, loc.lon], { icon: tempIcon })
+                    .bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) })
+                    .addTo(mapMarkersGroup);
+            });
+        }
+    } catch (e) {
+        console.error('Failed to initialize or update weather map:', e);
+    }
+}
 
 init();

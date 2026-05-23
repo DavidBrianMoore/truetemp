@@ -905,7 +905,27 @@ async function fetchWeatherData(lat, lon, stationId = null) {
             // Live physical sensor observations
             if (PRIMARY_SOURCE === 'auto' || PRIMARY_SOURCE === 'nws-obs') {
                 try {
-                    const sId = stationId || pointsData.properties.observationStations.split('/').pop() || (await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: HEADERS }).then(r => r.json()).then(d => d.features[0].properties.stationIdentifier));
+                    let sId = stationId;
+                    if (!sId) {
+                        try {
+                            const stationsRes = await fetch(pointsData.properties.observationStations, { headers: HEADERS });
+                            if (stationsRes.ok) {
+                                const stationsData = await stationsRes.json();
+                                sId = stationsData.features?.[0]?.properties?.stationIdentifier;
+                            }
+                        } catch (e) {
+                            console.warn('Direct station search failed, using coordinates fallback.', e);
+                        }
+                    }
+                    if (!sId) {
+                        try {
+                            sId = await fetch(`${NWS_API}/points/${lat.toFixed(4)},${lon.toFixed(4)}/stations`, { headers: HEADERS })
+                                .then(r => r.json())
+                                .then(d => d.features[0].properties.stationIdentifier);
+                        } catch (e) {
+                            console.warn('Fallback station resolution failed.', e);
+                        }
+                    }
                     if (sId) {
                         const sEl = document.getElementById('station-info');
                         if (sEl) sEl.textContent = `Station: ${sId}`;
@@ -1143,6 +1163,10 @@ async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrow
         const v = CURRENT_UNITS === 'F' ? Math.abs(diff) : Math.round(Math.abs(diff) / 1.8);
         return diff > 0 ? `+${v}° warmer` : diff < 0 ? `${-v}° cooler` : 'Same';
     };
+
+    // ── Today (Daily High for navigation consistency) ────────────────────────
+    const pillTodayTemp = document.getElementById('pill-today-temp');
+    if (pillTodayTemp) pillTodayTemp.textContent = `${display(todayHigh)}°`;
 
     // ── Yesterday (estimate: todayHigh minus typical daily variation) ──────────
     const yest = new Date(baseDate); yest.setDate(baseDate.getDate() - 1);

@@ -34,6 +34,12 @@
             </div>
         </header>
 
+        <!-- Favorites Bar (Hidden by default) -->
+        <div id="favorites-bar" class="favorites-bar glass-card" style="display: none;">
+            <div style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 6px;">Saved Locations</div>
+            <div id="favorites-list" style="display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px;"></div>
+        </div>
+
         <!-- Smart Alert Banner (Hidden by default) -->
         <div id="alert-banner" class="alert-banner" style="display: none;"></div>
         <div id="alert-details" class="alert-details glass-card" style="display: none;"></div>
@@ -51,9 +57,10 @@
         <!-- Weather Content (Hidden initially) -->
         <div id="weather-content" style="display: none;">
             <header class="current-weather card">
-                <div class="location-name" id="city-name" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 2px;">
+                <div class="location-name" id="city-name" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                     <span>Detecting Location...</span>
+                    <button id="favorite-btn" class="clickable" style="background: none; border: none; font-size: 1.25rem; cursor: pointer; color: rgba(255,255,255,0.4); padding: 0 4px; line-height: 1; transition: all 0.2s; outline: none; display: inline-flex; align-items: center; margin-top: -2px;" title="Save to Favorites">☆</button>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
                     <div id="station-info" style="font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; letter-spacing: 0.5px;">--</div>
@@ -198,10 +205,13 @@
             </section>
 
             <!-- Sleek Interactive Map Section -->
-            <section class="forecast-container map-section">
-                <h3 style="margin-bottom: 1rem; color: var(--text-secondary); font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <section id="map-section" class="forecast-container map-section">
+                <h3 style="margin-bottom: 1rem; color: var(--text-secondary); font-weight: 600; display: flex; align-items: center; gap: 8px; position: relative;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
-                    Thermal Map & Nearby Stations
+                    <span>Thermal Map & Nearby Stations</span>
+                    <button id="map-resize-btn" class="clickable" style="margin-left: auto; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--accent); font-size: 0.75rem; padding: 4px 10px; border-radius: 8px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                        <span id="map-btn-icon">⛶</span> <span id="map-btn-text">Expand Map</span>
+                    </button>
                 </h3>
                 <div id="weather-map" class="glass-card" style="height: 380px; border-radius: 1.5rem; position: relative; z-index: 1;"></div>
             </section>

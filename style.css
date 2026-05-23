@@ -1185,4 +1185,84 @@ body {
     }
 }
 
+/* ── Favorites Bar & Favorite Chips Styling ── */
+.favorites-bar {
+    background: var(--card-bg) !important;
+    border: 1px solid var(--card-border) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    border-radius: 1.25rem !important;
+    padding: 0.75rem 1rem !important;
+    margin-bottom: 1.5rem !important;
+    width: 100%;
+    animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.favorite-chip {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    user-select: none;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.favorite-chip:hover {
+    background: rgba(255, 255, 255, 0.09) !important;
+    border-color: rgba(56, 189, 248, 0.35) !important;
+    transform: translateY(-1.5px);
+    box-shadow: 0 6px 15px rgba(56, 189, 248, 0.1);
+}
+
+.favorite-chip:active {
+    transform: translateY(0);
+}
+
+.fav-remove:hover {
+    color: #ef4444 !important;
+    transform: scale(1.15);
+}
+
+/* ── Map Expansion / Fullscreen Toggle ── */
+.map-section.fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 99999 !important;
+    margin: 0 !important;
+    padding: 1.5rem !important;
+    background: rgba(15, 23, 42, 0.95) !important;
+    backdrop-filter: blur(25px) !important;
+    -webkit-backdrop-filter: blur(25px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.map-section.fullscreen #weather-map {
+    height: calc(100% - 45px) !important;
+    border-radius: 1.5rem !important;
+    border-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+.map-section.fullscreen h3 {
+    margin-bottom: 0.75rem !important;
+}
+
+#map-resize-btn {
+    transition: all 0.2s ease;
+}
+
+#map-resize-btn:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: var(--accent) !important;
+    transform: scale(1.05);
+}
+
+#favorite-btn:hover {
+    transform: scale(1.25) rotate(15deg);
+}
+
 

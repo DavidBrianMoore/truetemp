@@ -161,6 +161,75 @@ window.__selectMapLocation = async (lat, lon, name) => {
     }
 };
 
+// Saved Locations (Favorites) State Manager
+let FAVORITES = JSON.parse(localStorage.getItem('favorites') || '[]');
+
+function updateFavoriteStar() {
+    const btn = document.getElementById('favorite-btn');
+    if (!btn) return;
+    const isFav = FAVORITES.some(f => Math.abs(f.lat - CURRENT_LAT) < 0.01 && Math.abs(f.lon - CURRENT_LON) < 0.01);
+    if (isFav) {
+        btn.textContent = '★';
+        btn.style.color = '#fbbf24'; // Solid Gold
+        btn.title = 'Remove from Saved Locations';
+    } else {
+        btn.textContent = '☆';
+        btn.style.color = 'rgba(255,255,255,0.4)';
+        btn.title = 'Save to Saved Locations';
+    }
+}
+
+function renderFavorites() {
+    const bar = document.getElementById('favorites-bar');
+    const list = document.getElementById('favorites-list');
+    if (!bar || !list) return;
+    
+    list.innerHTML = '';
+    if (FAVORITES.length === 0) {
+        bar.style.display = 'none';
+        return;
+    }
+    
+    FAVORITES.forEach(fav => {
+        const chip = document.createElement('div');
+        chip.className = 'favorite-chip glass-card clickable';
+        chip.style.display = 'flex';
+        chip.style.alignItems = 'center';
+        chip.style.gap = '6px';
+        chip.style.padding = '6px 12px';
+        chip.style.borderRadius = '20px';
+        chip.style.fontSize = '0.78rem';
+        chip.style.fontWeight = '600';
+        chip.style.background = 'rgba(255,255,255,0.04)';
+        chip.style.border = '1px solid rgba(255,255,255,0.08)';
+        chip.style.color = 'var(--text-primary)';
+        
+        chip.innerHTML = `
+            <span class="fav-name-click" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                ⭐ <span>${fav.name}</span>
+            </span>
+            <span class="fav-remove" style="color:rgba(255,255,255,0.3); font-weight:800; cursor:pointer; padding: 0 2px; transition:color 0.2s;" title="Remove saved location">✕</span>
+        `;
+        
+        chip.querySelector('.fav-name-click').onclick = (e) => {
+            e.stopPropagation();
+            updateLoading(`Loading saved location: ${fav.name}...`);
+            fetchWeatherData(fav.lat, fav.lon, null, fav.name);
+        };
+        
+        chip.querySelector('.fav-remove').onclick = (e) => {
+            e.stopPropagation();
+            FAVORITES = FAVORITES.filter(f => !(f.lat === fav.lat && f.lon === fav.lon));
+            localStorage.setItem('favorites', JSON.stringify(FAVORITES));
+            renderFavorites();
+            updateFavoriteStar();
+        };
+        
+        list.appendChild(chip);
+    });
+    bar.style.display = 'block';
+}
+
 async function init() {
     // Register ATA State
     ata.registerState('hourlyData', () => ALL_HOURLY_DATA);
@@ -188,6 +257,56 @@ async function init() {
         }
         location.reload();
     });
+
+    // Map full-screen/resize listener
+    const mapResizeBtn = document.getElementById('map-resize-btn');
+    const mapSection = document.getElementById('map-section');
+    const mapBtnIcon = document.getElementById('map-btn-icon');
+    const mapBtnText = document.getElementById('map-btn-text');
+    
+    if (mapResizeBtn && mapSection) {
+        mapResizeBtn.addEventListener('click', () => {
+            const isFull = mapSection.classList.toggle('fullscreen');
+            if (isFull) {
+                if (mapBtnIcon) mapBtnIcon.textContent = '✕';
+                if (mapBtnText) mapBtnText.textContent = 'Minimize Map';
+                document.body.style.overflow = 'hidden'; // Disable page scrolling
+            } else {
+                if (mapBtnIcon) mapBtnIcon.textContent = '⛶';
+                if (mapBtnText) mapBtnText.textContent = 'Expand Map';
+                document.body.style.overflow = ''; // Re-enable page scrolling
+            }
+            // Invalidate size immediately so Leaflet redraws correctly
+            if (leafletMap) {
+                setTimeout(() => {
+                    leafletMap.invalidateSize();
+                }, 300); // Wait for transition
+            }
+        });
+    }
+
+    // Favorite button click listener
+    const favoriteBtn = document.getElementById('favorite-btn');
+    if (favoriteBtn) {
+        favoriteBtn.addEventListener('click', () => {
+            const isFav = FAVORITES.some(f => Math.abs(f.lat - CURRENT_LAT) < 0.01 && Math.abs(f.lon - CURRENT_LON) < 0.01);
+            if (isFav) {
+                FAVORITES = FAVORITES.filter(f => !(Math.abs(f.lat - CURRENT_LAT) < 0.01 && Math.abs(f.lon - CURRENT_LON) < 0.01));
+            } else {
+                FAVORITES.push({
+                    name: UI.city.textContent || 'Saved Location',
+                    lat: CURRENT_LAT,
+                    lon: CURRENT_LON
+                });
+            }
+            localStorage.setItem('favorites', JSON.stringify(FAVORITES));
+            renderFavorites();
+            updateFavoriteStar();
+        });
+    }
+
+    // Initial render of saved locations
+    renderFavorites();
 
     // Search Logic with Multi-Result Support
     let searchTimeout = null;
@@ -1055,6 +1174,8 @@ function renderWeather(current, hourly) {
         };
     }
     renderHourly(hourly.slice(0, 24));
+    updateFavoriteStar();
+    renderFavorites();
 }
 
 function renderHourly(periods) {

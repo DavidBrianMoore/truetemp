@@ -123,9 +123,42 @@ const getGridCellKey = (lat, lon) => {
 
 // Global callback for map popup button selections
 window.__selectMapLocation = async (lat, lon, name) => {
-    updateLoading(`Analyzing atmosphere at ${name}...`);
-    await fetchWeatherData(lat, lon);
+    // 1. Instantly disable other select actions and show button activity
+    document.querySelectorAll('.popup-select-btn').forEach(btn => {
+        btn.disabled = true;
+        btn.textContent = '⚡ LOADING...';
+        btn.style.opacity = '0.7';
+    });
+    
+    // 2. Instantly dim the dashboard content to convey immediate feedback
+    if (UI.content) {
+        UI.content.style.opacity = '0.4';
+        UI.content.style.pointerEvents = 'none';
+        UI.content.style.transition = 'opacity 0.4s ease';
+    }
+    if (UI.state) {
+        UI.state.style.display = 'flex';
+        updateLoading(`Connecting to atmosphere at ${name}...`);
+    }
+    
+    // 3. Smooth scroll to top instantly
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // 4. Fetch the weather data with the geocoded city name pre-set
+    try {
+        await fetchWeatherData(lat, lon, null, name);
+    } catch (e) {
+        console.error('Failed to select map location:', e);
+    } finally {
+        // 5. Restore full opacity and interactivity
+        if (UI.content) {
+            UI.content.style.opacity = '1';
+            UI.content.style.pointerEvents = 'auto';
+        }
+        if (UI.state) {
+            UI.state.style.display = 'none';
+        }
+    }
 };
 
 async function init() {
@@ -402,7 +435,7 @@ function getWindDirectionCompass(deg) {
     return directions[idx];
 }
 
-async function fetchOpenMeteoWeatherData(lat, lon) {
+async function fetchOpenMeteoWeatherData(lat, lon, customCityName = null) {
     const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,visibility&hourly=temperature_2m,weather_code,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=10`;
     
     updateLoading('Fetching international atmosphere grid...');
@@ -410,18 +443,20 @@ async function fetchOpenMeteoWeatherData(lat, lon) {
     if (!res.ok) throw new Error('Open-Meteo API is currently offline.');
     const data = await res.json();
     
-    let cityName = `Coordinates: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
-    try {
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`);
-        if (geoRes.ok) {
-            const geoData = await geoRes.json();
-            const addr = geoData.address;
-            cityName = addr.city || addr.town || addr.village || addr.municipality || addr.county || cityName;
-            if (addr.state) cityName += `, ${addr.state}`;
-            else if (addr.country) cityName += `, ${addr.country}`;
+    let cityName = customCityName || `Coordinates: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+    if (!customCityName) {
+        try {
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`);
+            if (geoRes.ok) {
+                const geoData = await geoRes.json();
+                const addr = geoData.address;
+                cityName = addr.city || addr.town || addr.village || addr.municipality || addr.county || cityName;
+                if (addr.state) cityName += `, ${addr.state}`;
+                else if (addr.country) cityName += `, ${addr.country}`;
+            }
+        } catch (e) {
+            console.warn('Reverse geocoding failed, using default coordinate labels.');
         }
-    } catch (e) {
-        console.warn('Reverse geocoding failed, using default coordinate labels.');
     }
     
     const currentMapped = {
@@ -521,7 +556,7 @@ function cleanMetNorwaySymbol(symbol) {
     return base.replace(/[-_]/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-async function fetchMetNorwayWeatherData(lat, lon) {
+async function fetchMetNorwayWeatherData(lat, lon, customCityName = null) {
     const metUrl = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${Number(lat).toFixed(4)}&lon=${Number(lon).toFixed(4)}`;
     
     updateLoading('Fetching international forecast from MET Norway...');
@@ -529,18 +564,20 @@ async function fetchMetNorwayWeatherData(lat, lon) {
     if (!res.ok) throw new Error('MET Norway API is currently offline.');
     const data = await res.json();
     
-    let cityName = `Coordinates: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
-    try {
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`);
-        if (geoRes.ok) {
-            const geoData = await geoRes.json();
-            const addr = geoData.address;
-            cityName = addr.city || addr.town || addr.village || addr.municipality || addr.county || cityName;
-            if (addr.state) cityName += `, ${addr.state}`;
-            else if (addr.country) cityName += `, ${addr.country}`;
+    let cityName = customCityName || `Coordinates: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+    if (!customCityName) {
+        try {
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`);
+            if (geoRes.ok) {
+                const geoData = await geoRes.json();
+                const addr = geoData.address;
+                cityName = addr.city || addr.town || addr.village || addr.municipality || addr.county || cityName;
+                if (addr.state) cityName += `, ${addr.state}`;
+                else if (addr.country) cityName += `, ${addr.country}`;
+            }
+        } catch (e) {
+            console.warn('Reverse geocoding failed, using default coordinate labels.');
         }
-    } catch (e) {
-        console.warn('Reverse geocoding failed, using default coordinate labels.');
     }
     
     const timeseries = data.properties.timeseries;
@@ -642,7 +679,7 @@ async function fetchMetNorwayWeatherData(lat, lon) {
     };
 }
 
-async function fetchWeatherData(lat, lon, stationId = null) {
+async function fetchWeatherData(lat, lon, stationId = null, customCityName = null) {
     if (lat === undefined || lon === undefined) return;
     CURRENT_LAT = lat;
     CURRENT_LON = lon;
@@ -650,7 +687,7 @@ async function fetchWeatherData(lat, lon, stationId = null) {
     // Direct open-meteo provider bypass
     if (PRIMARY_SOURCE === 'open-meteo') {
         try {
-            const data = await fetchOpenMeteoWeatherData(lat, lon);
+            const data = await fetchOpenMeteoWeatherData(lat, lon, customCityName);
             UI.city.textContent = data.cityName;
             const stationEl = document.getElementById('station-info');
             if (stationEl) stationEl.textContent = 'Provider: Open-Meteo Grid';
@@ -704,7 +741,7 @@ async function fetchWeatherData(lat, lon, stationId = null) {
     // Direct MET Norway provider bypass
     if (PRIMARY_SOURCE === 'met-norway') {
         try {
-            const data = await fetchMetNorwayWeatherData(lat, lon);
+            const data = await fetchMetNorwayWeatherData(lat, lon, customCityName);
             UI.city.textContent = data.cityName;
             const stationEl = document.getElementById('station-info');
             if (stationEl) stationEl.textContent = 'Provider: MET Norway (yr.no)';
@@ -783,10 +820,10 @@ async function fetchWeatherData(lat, lon, stationId = null) {
             let data;
             let providerName = 'Open-Meteo (Fallback)';
             try {
-                data = await fetchOpenMeteoWeatherData(lat, lon);
+                data = await fetchOpenMeteoWeatherData(lat, lon, customCityName);
             } catch (err) {
                 console.warn('Open-Meteo fallback failed, trying MET Norway...', err);
-                data = await fetchMetNorwayWeatherData(lat, lon);
+                data = await fetchMetNorwayWeatherData(lat, lon, customCityName);
                 providerName = 'MET Norway (Fallback)';
             }
             UI.city.textContent = data.cityName;
@@ -1886,13 +1923,13 @@ function renderMapMarkersFromCache() {
         
         const popupContent = `
             <div class="map-popup-card" style="min-width: 180px; padding: 4px 0; font-family: 'Outfit', sans-serif;">
-                <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 2px;">${loc.name}</div>
+                <div class="popup-location-name" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 2px;">${loc.name}</div>
                 <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">Source: ${loc.source === 'nws' ? 'NWS Live Observation' : loc.source === 'metnorway' ? 'MET Norway (yr.no)' : 'Open-Meteo Grid'}</div>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
                     <span style="font-size: 1.4rem; font-weight: 800; color: ${color};">${displayTemp}°${CURRENT_UNITS}</span>
                     <span style="font-size: 0.75rem; font-weight: 600; opacity: 0.8; color: var(--text-secondary);">${loc.condition}</span>
                 </div>
-                <button class="clickable" onclick="window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${loc.name.replace(/'/g, "\\'")}')" 
+                <button class="clickable popup-select-btn" onclick="window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${loc.name.replace(/'/g, "\\'")}')" 
                         style="background: var(--accent); color: #0f172a; border: none; padding: 7px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; width: 100%; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(56, 189, 248, 0.2);">
                     Set as Active Location
                 </button>
@@ -1902,6 +1939,42 @@ function renderMapMarkersFromCache() {
         const marker = L.marker([loc.lat, loc.lon], { icon: tempIcon })
             .bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) })
             .addTo(mapMarkersGroup);
+
+        // Dynamic, high-accuracy reverse geocoding on popup open
+        marker.on('popupopen', async (e) => {
+            const popup = e.popup;
+            const container = popup.getElement();
+            if (!container) return;
+            const nameEl = container.querySelector('.popup-location-name');
+            const btnEl = container.querySelector('.popup-select-btn');
+            
+            // Only geocode generic placeholders to save Nominatim requests and prevent sluggishness
+            if (loc.name.includes('Grid Node') || loc.name.includes('Coordinates')) {
+                if (nameEl) nameEl.textContent = '📍 Resolving place...';
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lon}&format=json&zoom=12`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        const addr = data.address;
+                        const placeName = addr.city || addr.town || addr.village || addr.suburb || addr.neighbourhood || addr.municipality || addr.county || 'Grid Node';
+                        const stateSuffix = addr.state ? `, ${addr.state}` : (addr.country ? `, ${addr.country}` : '');
+                        const fullName = `${placeName}${stateSuffix}`;
+                        
+                        // Persist resolved location name in memory so subsequent activations and maps are instant
+                        loc.name = fullName;
+                        
+                        if (nameEl) nameEl.textContent = fullName;
+                        if (btnEl) {
+                            btnEl.setAttribute('onclick', `window.__selectMapLocation(${loc.lat}, ${loc.lon}, '${fullName.replace(/'/g, "\\'")}')`);
+                        }
+                    } else {
+                        if (nameEl) nameEl.textContent = loc.name;
+                    }
+                } catch (err) {
+                    if (nameEl) nameEl.textContent = loc.name;
+                }
+            }
+        });
             
         // Check if this marker matches the previously open popup's position
         if (wasPopupOpen && prevPopupLatLng && 

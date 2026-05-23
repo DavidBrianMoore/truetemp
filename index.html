@@ -63,6 +63,31 @@
                     <div id="hero-icon-container" class="hero-icon"></div>
                     <div class="temperature" id="current-temp">--°</div>
                 </div>
+
+                <!-- Time Navigation Pills: Yesterday / Last Year / Tomorrow -->
+                <div class="time-nav" id="time-nav">
+                    <button class="time-pill" id="pill-yesterday">
+                        <span class="time-pill-label">Yesterday</span>
+                        <span class="time-pill-temp" id="pill-yesterday-temp">--°</span>
+                        <span class="time-pill-diff" id="pill-yesterday-diff"></span>
+                    </button>
+                    <button class="time-pill time-pill-today" id="pill-today">
+                        <span class="time-pill-label">Today</span>
+                        <span class="time-pill-temp" id="pill-today-temp">--°</span>
+                        <span class="time-pill-diff" id="pill-today-diff" style="opacity:0;">—</span>
+                    </button>
+                    <button class="time-pill" id="pill-tomorrow">
+                        <span class="time-pill-label">Tomorrow</span>
+                        <span class="time-pill-temp" id="pill-tomorrow-temp">--°</span>
+                        <span class="time-pill-diff" id="pill-tomorrow-diff"></span>
+                    </button>
+                    <button class="time-pill" id="pill-lastyear">
+                        <span class="time-pill-label">Last Year</span>
+                        <span class="time-pill-temp" id="pill-lastyear-temp">--°</span>
+                        <span class="time-pill-diff" id="pill-lastyear-diff"></span>
+                    </button>
+                </div>
+
                 <div class="current-date" id="current-date">--</div>
                 <div class="last-updated" id="last-updated">Updating...</div>
                 <div id="high-low-row" style="font-weight: 600; color: var(--text-secondary); margin-top: -0.5rem; display: flex; gap: 1rem; justify-content: center;">
@@ -73,48 +98,83 @@
                 <a id="radar-link" href="#" target="_blank" class="radar-link">View Local Radar 📡</a>
             </header>
 
-            <!-- Trends Section -->
-            <section class="trends-container" id="trends-container" style="display: none;">
-                <div class="trend-item">
-                    <span class="trend-label">Yesterday</span>
-                    <span class="trend-value" id="trend-yesterday-temp">--°</span>
-                    <span id="trend-yesterday-diff" class="diff-badge small">--</span>
-                </div>
-                <div class="trend-item">
-                    <span class="trend-label">Last Year</span>
-                    <span class="trend-value" id="trend-lastyear-temp">--°</span>
-                    <span id="trend-lastyear-diff" class="diff-badge small">--</span>
-                </div>
-                <div class="trend-item">
-                    <span class="trend-label">Tomorrow</span>
-                    <span class="trend-value" id="trend-tomorrow-temp">--°</span>
-                    <span id="trend-tomorrow-diff" class="diff-badge small">--</span>
-                </div>
-            </section>
-
             <section class="info-grid">
+                <!-- Feels Like Card -->
                 <div class="info-item">
-                    <span class="info-label">Feels Like</span>
+                    <div class="info-icon-container">
+                        <svg class="weather-svg-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#ff4757" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 14.76V3.5a2 2 0 0 0-4 0v11.26a4.5 4.5 0 1 0 4 0z" stroke="#ff6b6b" />
+                            <line x1="12" y1="13" x2="12" y2="7" stroke="#ff4757" stroke-width="2.5" stroke-linecap="round" class="mercury-line" />
+                            <path d="M5 8Q6 6 5 4" stroke="#ffa502" stroke-width="1.5" class="heat-wave wave-1" />
+                            <path d="M19 8Q18 6 19 4" stroke="#ffa502" stroke-width="1.5" class="heat-wave wave-2" />
+                        </svg>
+                    </div>
+                    <span class="info-label">Feels</span>
                     <span class="info-value" id="feels-like">--°</span>
                 </div>
+
+                <!-- Wind Speed Card -->
                 <div class="info-item">
-                    <span class="info-label">Wind Speed</span>
+                    <div class="info-icon-container">
+                        <svg class="weather-svg-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 8h16a3 3 0 1 0-3-3" class="wind-line wind-1" />
+                            <path d="M4 12h18a3 3 0 1 1-3 3" class="wind-line wind-2" />
+                            <path d="M2 16h11a3 3 0 1 0-3-3" class="wind-line wind-3" />
+                        </svg>
+                    </div>
+                    <span class="info-label">Wind</span>
                     <span class="info-value" id="wind-speed">-- mph</span>
                 </div>
+
+                <!-- Humidity Card -->
                 <div class="info-item">
+                    <div class="info-icon-container">
+                        <svg class="weather-svg-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L5 12a7 7 0 1 0 14 0L12 2z" class="droplet-outline" />
+                            <path d="M12 9a4 4 0 0 0-4 4" stroke="#60a5fa" stroke-width="1.5" class="droplet-glow" />
+                            <circle cx="12" cy="15" r="2" fill="#3b82f6" class="droplet-water" />
+                        </svg>
+                    </div>
                     <span class="info-label">Humidity</span>
                     <span class="info-value" id="humidity">--%</span>
                 </div>
+
+                <!-- Visibility Card -->
                 <div class="info-item">
+                    <div class="info-icon-container">
+                        <svg class="weather-svg-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
+                            <circle cx="12" cy="12" r="3" stroke="#a855f7" class="eye-pupil" />
+                            <circle cx="12" cy="12" r="1" fill="#ec4899" class="eye-iris" />
+                        </svg>
+                    </div>
                     <span class="info-label">Visibility</span>
                     <span class="info-value" id="visibility">-- mi</span>
                 </div>
+
+                <!-- Rain/Precipitation Card -->
                 <div class="info-item">
-                    <span class="info-label">Rain Chance</span>
+                    <div class="info-icon-container">
+                        <svg class="weather-svg-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25" stroke="#94a3b8" />
+                            <line x1="8" y1="18" x2="8" y2="21" stroke="#60a5fa" stroke-width="2" class="rain-drop drop-1" />
+                            <line x1="12" y1="18" x2="12" y2="21" stroke="#60a5fa" stroke-width="2" class="rain-drop drop-2" />
+                            <line x1="16" y1="18" x2="16" y2="21" stroke="#60a5fa" stroke-width="2" class="rain-drop drop-3" />
+                        </svg>
+                    </div>
+                    <span class="info-label">Rain</span>
                     <span class="info-value" id="precip-chance">--%</span>
                 </div>
+
+                <!-- UV Index Card -->
                 <div class="info-item">
-                    <span class="info-label">UV Index</span>
+                    <div class="info-icon-container">
+                        <svg class="weather-svg-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="4" stroke="#fbbf24" fill="#fbbf24" fill-opacity="0.2" />
+                            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" class="sun-rays" />
+                        </svg>
+                    </div>
+                    <span class="info-label">UV</span>
                     <span class="info-value" id="uv-index">--</span>
                 </div>
             </section>

@@ -984,6 +984,19 @@ function renderWeather(current, hourly) {
     UI.set('precipChance', precip !== null ? `${precip}%` : '--%');
     UI.set('uvIndex', '--');
     if (UI.heroIcon) UI.heroIcon.innerHTML = `<img src="${getModernIcon(current.shortForecast)}" alt="Icon" style="width: 100px;">`;
+    // Populate Today pill immediately
+    const pillTodayTemp = document.getElementById('pill-today-temp');
+    if (pillTodayTemp) pillTodayTemp.textContent = `${displayTemp}°`;
+    // Wire up Today pill to reset app focus
+    const pillToday = document.getElementById('pill-today');
+    if (pillToday) {
+        pillToday.onclick = () => {
+            if (INITIAL_STATE) {
+                setActivePill('pill-today');
+                updateAppFocus(INITIAL_STATE);
+            }
+        };
+    }
     renderHourly(hourly.slice(0, 24));
 }
 
@@ -1055,10 +1068,11 @@ function updateAppFocus(data, isHistorical = false) {
     }
     const resetBtn = document.getElementById('return-today');
     if (resetBtn) {
-        resetBtn.style.display = baseDate.toDateString() === new Date().toDateString() ? 'none' : 'flex';
+        const isToday = baseDate.toDateString() === new Date().toDateString();
+        resetBtn.style.display = isToday ? 'none' : 'flex';
         resetBtn.onclick = () => {
+            setActivePill('pill-today');
             updateAppFocus(INITIAL_STATE);
-            resetBtn.style.display = 'none';
         };
     }
 }
@@ -1080,6 +1094,33 @@ async function fetchAlerts(lat, lon) {
     } catch (e) { console.error(e); }
 }
 
+/**
+ * Highlights one pill as active (orange glow) and resets the others.
+ * @param {string} activePillId - ID of the pill to activate ('pill-today' | 'pill-yesterday' | 'pill-tomorrow' | 'pill-lastyear')
+ */
+function setActivePill(activePillId) {
+    ['pill-today', 'pill-yesterday', 'pill-tomorrow', 'pill-lastyear'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (id === activePillId) {
+            el.classList.add('time-pill-active');
+            if (id === 'pill-today') {
+                el.classList.add('time-pill-today');
+                el.classList.remove('time-pill-active');
+            } else {
+                el.classList.remove('time-pill-today');
+            }
+        } else {
+            el.classList.remove('time-pill-active');
+            if (id === 'pill-today') el.classList.add('time-pill-today');
+            else el.classList.remove('time-pill-today');
+        }
+    });
+    // Show "Return to Today" banner whenever focus is not on Today
+    const resetBtn = document.getElementById('return-today');
+    if (resetBtn) resetBtn.style.display = activePillId === 'pill-today' ? 'none' : 'flex';
+}
+
 function getModernIcon(forecast) {
     const f = forecast.toLowerCase();
     if (f.includes('sunny') || f.includes('clear')) return 'https://cdn-icons-png.flaticon.com/512/869/869869.png';
@@ -1093,61 +1134,79 @@ function updateTheme(temp) {
     document.documentElement.style.setProperty('--bg-color-1', temp > 80 ? '#7c2d12' : '#0f172a');
 }
 
+/**
+ * Populates the inline time-navigation pill buttons inside the main weather card.
+ */
 async function fetchTrends(lat, lon, todayHigh, todayLow, tomorrowHigh, tomorrowLow, baseDate = new Date()) {
+    const display = (f) => CURRENT_UNITS === 'F' ? f : Math.round((f - 32) * 5 / 9);
+    const diffText = (diff) => {
+        const v = CURRENT_UNITS === 'F' ? Math.abs(diff) : Math.round(Math.abs(diff) / 1.8);
+        return diff > 0 ? `+${v}° warmer` : diff < 0 ? `${-v}° cooler` : 'Same';
+    };
+
+    // ── Yesterday (estimate: todayHigh minus typical daily variation) ──────────
     const yest = new Date(baseDate); yest.setDate(baseDate.getDate() - 1);
+    const yestHigh = todayHigh - 2; // lightweight estimate until we fetch archive
+    const yestDiff = yestHigh - todayHigh;
+    const pillYestTemp = document.getElementById('pill-yesterday-temp');
+    const pillYestDiff = document.getElementById('pill-yesterday-diff');
+    const pillYest = document.getElementById('pill-yesterday');
+    if (pillYestTemp) pillYestTemp.textContent = `${display(yestHigh)}°`;
+    if (pillYestDiff) pillYestDiff.textContent = diffText(yestDiff);
+    if (pillYest) {
+        pillYest.onclick = () => {
+            setActivePill('pill-yesterday');
+            updateAppFocus({ temperature: yestHigh, shortForecast: 'Yesterday\'s High', date: yest }, false);
+        };
+    }
+
+    // ── Tomorrow ──────────────────────────────────────────────────────────────
+    const tom = new Date(baseDate); tom.setDate(baseDate.getDate() + 1);
+    const tomDiff = tomorrowHigh - todayHigh;
+    const pillTomTemp = document.getElementById('pill-tomorrow-temp');
+    const pillTomDiff = document.getElementById('pill-tomorrow-diff');
+    const pillTom = document.getElementById('pill-tomorrow');
+    if (pillTomTemp) pillTomTemp.textContent = `${display(tomorrowHigh)}°`;
+    if (pillTomDiff) pillTomDiff.textContent = diffText(tomDiff);
+    if (pillTom) {
+        pillTom.onclick = () => {
+            setActivePill('pill-tomorrow');
+            const tomPeriod = ALL_DAILY_DATA.find(p => new Date(p.startTime).toDateString() === tom.toDateString());
+            if (tomPeriod) {
+                updateAppFocus(tomPeriod, false);
+            } else {
+                updateAppFocus({ temperature: tomorrowHigh, shortForecast: 'Tomorrow\'s Outlook', date: tom }, false);
+            }
+        };
+    }
+
+    // ── Last Year — fetch from archive API ────────────────────────────────────
     const ly = new Date(baseDate); ly.setFullYear(baseDate.getFullYear() - 1);
-    const yestDate = yest.toISOString().split('T')[0], lyDate = ly.toISOString().split('T')[0];
-    
+    const lyDate = ly.toISOString().split('T')[0];
     let lyHigh = todayHigh - 1;
     try {
-        const lyRes = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit`);
+        const lyRes = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${lyDate}&end_date=${lyDate}&daily=temperature_2m_max&temperature_unit=fahrenheit`);
         if (lyRes.ok) {
             const lyData = await lyRes.json();
-            if (lyData.daily && lyData.daily.temperature_2m_max) {
-                lyHigh = Math.round(lyData.daily.temperature_2m_max[0] || (todayHigh - 1));
+            if (lyData.daily?.temperature_2m_max?.[0] != null) {
+                lyHigh = Math.round(lyData.daily.temperature_2m_max[0]);
             }
         }
     } catch (e) {
-        console.warn('Failed to fetch Last Year archive telemetry, using fallback estimation.', e);
+        console.warn('Archive fetch failed, using estimate for Last Year pill.', e);
     }
-
-    try {
-        UI.trends.container.innerHTML = ''; UI.trends.items = [];
-        const isToday = baseDate.toDateString() === new Date().toDateString();
-        const trendData = [
-            { label: (isToday ? 'Yesterday' : yest.toLocaleDateString([], { weekday: 'long' })) + ` (${yest.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: todayHigh - 2, diff: -2, date: yest },
-            { label: `In ${ly.getFullYear()} (${ly.toLocaleDateString([], {month:'short', day:'numeric'})})`, high: lyHigh, diff: lyHigh - todayHigh, date: ly },
-            { label: (isToday ? 'Tomorrow' : new Date(baseDate.getTime() + 86400000).toLocaleDateString([], { weekday: 'long' })) + ` (${new Date(baseDate.getTime() + 86400000).toLocaleDateString([], {month:'short', day:'numeric'})})`, high: tomorrowHigh, diff: tomorrowHigh - todayHigh, date: new Date(baseDate.getTime() + 86400000), isForward: true }
-        ];
-        trendData.forEach(d => {
-            const el = document.createElement('div'); el.className = 'trend-card clickable glass-card';
-            const diffVal = CURRENT_UNITS === 'F' ? Math.abs(d.diff) : Math.round(Math.abs(d.diff) / 1.8);
-            const text = d.diff > 0 ? `${diffVal}° hotter` : d.diff < 0 ? `${diffVal}° cooler` : 'Same';
-            el.innerHTML = `<span style="font-size:0.7rem; color:var(--text-secondary);">${d.label}</span><div style="display:flex; align-items: baseline; gap: 6px; margin: 4px 0;"><span style="font-size:1.5rem; font-weight:700;">${CURRENT_UNITS === 'F' ? d.high : Math.round((d.high - 32) * 5/9)}°</span></div><span class="diff-badge small" style="background:rgba(255,255,255,0.1);">${text}</span>`;
-            
-            el.onclick = () => {
-                if (d.isForward) {
-                    const tomPeriod = ALL_DAILY_DATA.find(p => new Date(p.startTime).toDateString() === d.date.toDateString());
-                    if (tomPeriod) {
-                        updateAppFocus(tomPeriod, false);
-                    } else {
-                        updateAppFocus({ temperature: d.high, shortForecast: 'Tomorrow\'s Outlook', date: d.date }, false);
-                    }
-                } else {
-                    const isHist = d.label.includes('In'); // Only Last Year is historical
-                    updateAppFocus({
-                        temperature: d.high,
-                        shortForecast: isHist ? 'Historical Record' : 'Yesterday\'s Temperature',
-                        date: d.date
-                    }, isHist);
-                }
-            };
-            
-            UI.trends.container.appendChild(el); UI.trends.items.push(el);
-        });
-        LayoutEngine.applyGrid(UI.trends.container, UI.trends.items);
-        UI.trends.container.style.display = 'grid';
-    } catch (e) { console.error(e); }
+    const lyDiff = lyHigh - todayHigh;
+    const pillLYTemp = document.getElementById('pill-lastyear-temp');
+    const pillLYDiff = document.getElementById('pill-lastyear-diff');
+    const pillLY = document.getElementById('pill-lastyear');
+    if (pillLYTemp) pillLYTemp.textContent = `${display(lyHigh)}°`;
+    if (pillLYDiff) pillLYDiff.textContent = `${ly.getFullYear()}: ${diffText(lyDiff)}`;
+    if (pillLY) {
+        pillLY.onclick = () => {
+            setActivePill('pill-lastyear');
+            updateAppFocus({ temperature: lyHigh, shortForecast: `${ly.getFullYear()} Historical`, date: ly }, true);
+        };
+    }
 }
 
 function updateLoading(msg) { if (UI.state) { const msgEl = document.getElementById('loading-msg'); if (msgEl) msgEl.textContent = msg; } }

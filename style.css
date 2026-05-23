@@ -1080,60 +1080,111 @@ body {
 }
 
 /* ── Date, High-Low Row, and Last-Updated Styling ── */
-.current-date {
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-    color: var(--text-primary) !important;
-    margin-top: 1rem !important;
-    margin-bottom: 0.25rem !important;
-    letter-spacing: 0.3px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+.current-weather {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 1.5rem 1.25rem !important; /* Premium tight padding */
+    gap: 0.45rem !important; /* Perfect visual rhythm */
 }
 
-.high-low-row {
+.current-date {
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+    margin-top: 0.6rem !important;
+    margin-bottom: 0.1rem !important;
+    letter-spacing: 0.2px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.meta-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.6rem !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-top: 0.15rem !important;
+    margin-bottom: 0.25rem !important;
     font-size: 0.95rem !important;
     font-weight: 600 !important;
     color: var(--text-secondary) !important;
-    display: flex !important;
-    gap: 0.75rem !important;
-    justify-content: center !important;
-    align-items: center !important;
-    margin-top: 0.25rem !important;
-    margin-bottom: 0.5rem !important;
 }
 
-.high-low-divider {
-    color: rgba(255, 255, 255, 0.2) !important;
-    font-size: 0.8rem;
+.meta-divider {
+    color: rgba(255, 255, 255, 0.18) !important;
+    font-size: 0.75rem;
+}
+
+.condition {
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    text-transform: capitalize !important;
 }
 
 .high-val {
     color: #ff6b6b !important; /* Warm coral red high accent */
-    font-weight: 700;
-    margin-left: 3px;
+    font-weight: 700 !important;
+    margin-left: 2px;
 }
 
 .low-val {
     color: #38bdf8 !important; /* Cool sky blue low accent */
-    font-weight: 700;
-    margin-left: 3px;
+    font-weight: 700 !important;
+    margin-left: 2px;
 }
 
 .last-updated {
-    font-size: 0.72rem !important;
-    font-weight: 600 !important;
+    font-size: 0.65rem !important;
+    font-weight: 700 !important;
     color: var(--text-secondary) !important;
-    opacity: 0.8 !important;
+    opacity: 0.75 !important;
     background: rgba(255, 255, 255, 0.04) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    padding: 4px 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    padding: 3px 10px !important;
     border-radius: 20px !important;
     display: inline-block !important;
-    margin-top: 0.25rem !important;
-    margin-bottom: 0.75rem !important;
+    margin-top: 0.3rem !important;
+    margin-bottom: 0.4rem !important;
     box-shadow: inset 0 1px 2px rgba(255,255,255,0.05);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
+}
+
+.radar-link {
+    display: inline-block !important;
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
+    color: var(--accent) !important;
+    text-decoration: none !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    padding: 6px 14px !important;
+    border: 1px solid rgba(56, 189, 248, 0.3) !important;
+    border-radius: 12px !important;
+    background: rgba(56, 189, 248, 0.03) !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.radar-link:hover {
+    background: var(--accent) !important;
+    color: #0f172a !important;
+    border-color: var(--accent) !important;
+    transform: translateY(-1.5px) !important;
+    box-shadow: 0 6px 15px rgba(56, 189, 248, 0.35);
+}
+
+@media (max-width: 360px) {
+    .meta-row {
+        flex-direction: column !important;
+        gap: 0.2rem !important;
+    }
+    .meta-divider {
+        display: none !important;
+    }
 }
 
 

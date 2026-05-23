@@ -629,18 +629,16 @@ body {
 }
 
 .leaflet-popup-content-wrapper {
-    background: rgba(15, 23, 42, 0.85) !important;
+    background: #0f172a !important;
     color: var(--text-primary) !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    backdrop-filter: blur(15px);
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6) !important;
     border-radius: 1.25rem !important;
 }
 
 .leaflet-popup-tip {
-    background: rgba(15, 23, 42, 0.85) !important;
+    background: #0f172a !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    backdrop-filter: blur(15px);
 }
 
 /* Custom Temp Badge Marker */

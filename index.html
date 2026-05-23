@@ -14,6 +14,22 @@
     <meta name="apple-mobile-web-app-title" content="TrueTemp">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1163/1163734.png">
     
+    <!-- High-Velocity Network Preconnect Resource Hints -->
+    <link rel="preconnect" href="https://api.weather.gov">
+    <link rel="dns-prefetch" href="https://api.weather.gov">
+    
+    <link rel="preconnect" href="https://api.open-meteo.com">
+    <link rel="dns-prefetch" href="https://api.open-meteo.com">
+    
+    <link rel="preconnect" href="https://archive-api.open-meteo.com">
+    <link rel="dns-prefetch" href="https://archive-api.open-meteo.com">
+    
+    <link rel="preconnect" href="https://nominatim.openstreetmap.org">
+    <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
+    
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+
     <!-- Leaflet Maps CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     
@@ -62,9 +78,10 @@
                     <span>Detecting Location...</span>
                     <button id="favorite-btn" class="clickable" style="background: none; border: none; font-size: 1.25rem; cursor: pointer; color: rgba(255,255,255,0.4); padding: 0 4px; line-height: 1; transition: all 0.2s; outline: none; display: inline-flex; align-items: center; margin-top: -2px;" title="Save to Favorites">☆</button>
                 </div>
-                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
                     <div id="station-info" style="font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; letter-spacing: 0.5px;">--</div>
                     <button id="switch-station-btn" class="clickable" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: var(--accent); font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 700;">Alternative Stations</button>
+                    <button id="station-explanation-btn" class="clickable" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: var(--accent); font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; gap: 2px;" title="Sensor vs Forecast Explanation">Sensor vs Forecast ⓘ</button>
                 </div>
                 <div class="hero-main">
                     <div id="hero-icon-container" class="hero-icon"></div>
@@ -215,6 +232,11 @@
                 </h3>
                 <div id="weather-map" class="glass-card" style="height: 380px; border-radius: 1.5rem; position: relative; z-index: 1;"></div>
             </section>
+            
+            <footer style="margin-top: 2.5rem; padding: 1.5rem 0; text-align: center; font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; letter-spacing: 0.5px; border-top: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center;">
+                <div>TRUE TEMP ENGINE • HIGH ACCURACY ATMOSPHERIC DATA</div>
+                <div style="color: var(--accent); font-weight: bold;" id="app-version-footer">--</div>
+            </footer>
         </div>
     </main>
 
@@ -264,6 +286,40 @@
                     <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.35;">
                         Filter which geographic telemetry markers are displayed on the interactive Leaflet map.
                     </div>
+                </div>
+                <div style="font-size: 0.65rem; color: var(--text-secondary); text-align: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; margin-top: 12px;">
+                    TrueTemp Engine • <span id="settings-version-id" style="color: var(--accent); font-weight: bold;">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sensor vs Forecast Explanation Modal -->
+    <div id="explanation-modal" class="stations-modal" style="display: none;">
+        <div class="modal-content glass-card" style="max-width: 480px; text-align: left;">
+            <div class="modal-header">
+                <h3 style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.25rem;">ⓘ</span> Sensor vs. Forecast
+                </h3>
+                <button id="close-explanation" class="clickable">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem 1rem; color: var(--text-primary); font-size: 0.9rem; line-height: 1.6; display: flex; flex-direction: column; gap: 1.2rem;">
+                <p>
+                    Have you noticed a difference between the <strong>Current Temperature</strong> and the <strong>Forecast High/Low</strong>? This is a normal and expected feature of high-accuracy meteorology!
+                </p>
+                <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 12px 16px; margin: 4px 0;">
+                    <div style="font-weight: 700; color: var(--accent); margin-bottom: 4px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">1. Current Temperature (Real Sensors)</div>
+                    The current temperature displays live, real-time telemetry from the nearest official physical weather station (often located at low-altitude valley airports or coastal fields, e.g., <span id="explanation-station-id" style="font-family: monospace; font-weight: bold;">--</span>).
+                </div>
+                <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 12px; padding: 12px 16px; margin: 4px 0;">
+                    <div style="font-weight: 700; color: #c084fc; margin-bottom: 4px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">2. Forecast (Exact Coordinates Grid)</div>
+                    The forecast high, low, and daily cards are calculated for the exact geographic coordinates of your searched location, utilizing high-resolution grid models.
+                </div>
+                <p>
+                    In coastal, mountainous, or complex terrain (such as Alaska or mountain foothills), a high-altitude searched location may be in a freezing snow shower, while the nearest physical airport sensor down in the valley reads a much warmer temperature. 
+                </p>
+                <div style="font-size: 0.75rem; color: var(--text-secondary); text-align: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                    TrueTemp integrates both systems to give you the most honest meteorological picture possible.
                 </div>
             </div>
         </div>

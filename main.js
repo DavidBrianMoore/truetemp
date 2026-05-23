@@ -1,4 +1,5 @@
 import AntigravityTestingAPI from './ata.js';
+import { APP_VERSION } from './version.js';
 const ata = new AntigravityTestingAPI('TrueTemp');
 
 const THEME = {
@@ -190,7 +191,7 @@ function renderFavorites() {
         return;
     }
     
-    FAVORITES.forEach(fav => {
+    FAVORITES.forEach((fav, idx) => {
         const chip = document.createElement('div');
         chip.className = 'favorite-chip glass-card clickable';
         chip.style.display = 'flex';
@@ -205,9 +206,11 @@ function renderFavorites() {
         chip.style.color = 'var(--text-primary)';
         
         chip.innerHTML = `
+            ${idx > 0 ? `<span class="fav-move-left" style="color:var(--accent); opacity:0.5; cursor:pointer; font-size:0.95rem; padding:0 3px; font-weight:700; transition:all 0.2s; display:inline-flex; align-items:center;" title="Move left">‹</span>` : ''}
             <span class="fav-name-click" style="cursor:pointer; display:flex; align-items:center; gap:4px;">
                 ⭐ <span>${fav.name}</span>
             </span>
+            ${idx < FAVORITES.length - 1 ? `<span class="fav-move-right" style="color:var(--accent); opacity:0.5; cursor:pointer; font-size:0.95rem; padding:0 3px; font-weight:700; transition:all 0.2s; display:inline-flex; align-items:center;" title="Move right">›</span>` : ''}
             <span class="fav-remove" style="color:rgba(255,255,255,0.3); font-weight:800; cursor:pointer; padding: 0 2px; transition:color 0.2s;" title="Remove saved location">✕</span>
         `;
         
@@ -216,6 +219,28 @@ function renderFavorites() {
             updateLoading(`Loading saved location: ${fav.name}...`);
             fetchWeatherData(fav.lat, fav.lon, null, fav.name);
         };
+        
+        if (idx > 0) {
+            chip.querySelector('.fav-move-left').onclick = (e) => {
+                e.stopPropagation();
+                const temp = FAVORITES[idx];
+                FAVORITES[idx] = FAVORITES[idx - 1];
+                FAVORITES[idx - 1] = temp;
+                localStorage.setItem('favorites', JSON.stringify(FAVORITES));
+                renderFavorites();
+            };
+        }
+        
+        if (idx < FAVORITES.length - 1) {
+            chip.querySelector('.fav-move-right').onclick = (e) => {
+                e.stopPropagation();
+                const temp = FAVORITES[idx];
+                FAVORITES[idx] = FAVORITES[idx + 1];
+                FAVORITES[idx + 1] = temp;
+                localStorage.setItem('favorites', JSON.stringify(FAVORITES));
+                renderFavorites();
+            };
+        }
         
         chip.querySelector('.fav-remove').onclick = (e) => {
             e.stopPropagation();
@@ -247,6 +272,12 @@ async function init() {
     // Debug Exports
     window._truetemp = { ALL_HOURLY_DATA, ALL_DAILY_DATA, CURRENT_LAT, CURRENT_LON, INITIAL_STATE, UI };
 
+    // Set Version Text Displays
+    const footerVer = document.getElementById('app-version-footer');
+    const settingsVer = document.getElementById('settings-version-id');
+    if (footerVer) footerVer.textContent = APP_VERSION;
+    if (settingsVer) settingsVer.textContent = APP_VERSION;
+
     // Unit Toggle Listener — preserve searched location across reload
     UI.unitToggle.addEventListener('click', () => {
         CURRENT_UNITS = CURRENT_UNITS === 'F' ? 'C' : 'F';
@@ -267,6 +298,7 @@ async function init() {
     if (mapResizeBtn && mapSection) {
         mapResizeBtn.addEventListener('click', () => {
             const isFull = mapSection.classList.toggle('fullscreen');
+            document.body.classList.toggle('map-fullscreen-active', isFull);
             if (isFull) {
                 if (mapBtnIcon) mapBtnIcon.textContent = '✕';
                 if (mapBtnText) mapBtnText.textContent = 'Minimize Map';
@@ -533,6 +565,33 @@ async function init() {
             localStorage.setItem('map_filter', MAP_FILTER);
             if (CURRENT_LAT !== null && CURRENT_LON !== null) {
                 updateMap(CURRENT_LAT, CURRENT_LON);
+            }
+        });
+    }
+
+    // Sensor vs Forecast Explanation Modal Triggers
+    const explanationBtn = document.getElementById('station-explanation-btn');
+    const explanationModal = document.getElementById('explanation-modal');
+    const closeExplanation = document.getElementById('close-explanation');
+    const explanationStationId = document.getElementById('explanation-station-id');
+
+    if (explanationBtn && explanationModal && closeExplanation) {
+        explanationBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (explanationStationId) {
+                const currentStationText = document.getElementById('station-info')?.textContent || '--';
+                explanationStationId.textContent = currentStationText.replace('Station:', '').replace('Source:', '').trim();
+            }
+            explanationModal.style.display = 'flex';
+        });
+
+        closeExplanation.addEventListener('click', () => {
+            explanationModal.style.display = 'none';
+        });
+
+        explanationModal.addEventListener('click', (e) => {
+            if (e.target === explanationModal) {
+                explanationModal.style.display = 'none';
             }
         });
     }
